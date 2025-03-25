@@ -20,4 +20,5 @@ public record UserRequest(
         @NotBlank(message = "Team is required")
         String team
 ) {
+
 }

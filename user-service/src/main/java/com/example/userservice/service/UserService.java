@@ -4,14 +4,20 @@ import com.example.userservice.entity.Role;
 import com.example.userservice.entity.Team;
 import com.example.userservice.entity.User;
 import com.example.userservice.repository.UserRepository;
+import jakarta.mail.internet.MimeMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Value;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 @Transactional
@@ -20,13 +26,26 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final JavaMailSender mailSender;  // Inject JavaMailSender
 
-    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    @Value("${app.reset-password.url}")
+    private String resetPasswordUrl;
+
+    @Value("${app.company.name}")
+    private String companyName;
+
+    @Value("${app.company.email}")
+    private String companyEmail;
+
+    @Value("${app.company.logo.url}")
+    private String companyLogoUrl;
+
+    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder, JavaMailSender mailSender) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.mailSender = mailSender;
     }
 
-    // CREATE
     public Optional<User> createUser(String email, String password, String role,
                                      String firstName, String lastName, String team) {
         validateRequiredFields(email, password, role, firstName, lastName, team);
@@ -50,7 +69,6 @@ public class UserService {
         return Optional.of(savedUser);
     }
 
-    // READ (Single User by ID)
     public Optional<User> getUserById(Long id) {
         if (id == null) {
             logger.warn("Attempt to get user with null ID");
@@ -66,7 +84,6 @@ public class UserService {
         return user;
     }
 
-    // READ (Single User by Email)
     public Optional<User> getUserByEmail(String email) {
         if (email == null || email.trim().isEmpty()) {
             logger.warn("Attempt to get user with null or empty email");
@@ -83,14 +100,12 @@ public class UserService {
         return user;
     }
 
-    // READ (All Users)
     public List<User> getAllUsers() {
         List<User> users = userRepository.findAll();
         logger.debug("Retrieved {} users", users.size());
         return users;
     }
 
-    // UPDATE
     public Optional<User> updateUser(Long id, String email, String password, String role,
                                      String firstName, String lastName, String team) {
         if (id == null) {
@@ -143,7 +158,6 @@ public class UserService {
         return Optional.of(updatedUser);
     }
 
-    // DELETE
     public boolean deleteUser(Long id) {
         if (id == null) {
             logger.warn("Attempt to delete user with null ID");
@@ -161,7 +175,6 @@ public class UserService {
         return true;
     }
 
-    // Authentication (from previous version)
     public Optional<User> authenticate(String email, String password) {
         if (email == null || email.trim().isEmpty() || password == null || password.isEmpty()) {
             throw new IllegalArgumentException("Email and password must not be empty");
@@ -178,6 +191,115 @@ public class UserService {
         return Optional.empty();
     }
 
+    public String generateResetToken(String email) {
+        if (email == null || email.trim().isEmpty()) {
+            throw new IllegalArgumentException("Email is required");
+        }
+
+        String normalizedEmail = email.trim().toLowerCase();
+        Optional<User> userOpt = userRepository.findByEmail(normalizedEmail);
+        if (userOpt.isEmpty()) {
+            logger.warn("No user found for password reset: {}", normalizedEmail);
+            return null;  // Don't reveal if email exists
+        }
+
+        User user = userOpt.get();
+        String token = UUID.randomUUID().toString().replaceAll("-", "");
+        user.setResetToken(token);
+        user.setTokenExpiry(LocalDateTime.now().plusHours(1));  // 1-hour expiry
+        userRepository.save(user);
+
+        logger.info("Reset token generated for user: {}", normalizedEmail);
+        sendResetEmail(normalizedEmail, token);
+        return token;
+    }
+
+    public Optional<User> resetPassword(String token, String newPassword) {
+        if (token == null || token.trim().isEmpty()) {
+            throw new IllegalArgumentException("Reset token is required");
+        }
+        if (newPassword == null || newPassword.length() < 8) {
+            throw new IllegalArgumentException("New password must be at least 8 characters");
+        }
+
+        Optional<User> userOpt = userRepository.findByResetToken(token);
+        if (userOpt.isEmpty()) {
+            logger.warn("Invalid reset token: {}", token);
+            return Optional.empty();
+        }
+
+        User user = userOpt.get();
+        if (user.getTokenExpiry() == null || user.getTokenExpiry().isBefore(LocalDateTime.now())) {
+            logger.warn("Expired reset token: {}", token);
+            user.setResetToken(null);
+            user.setTokenExpiry(null);
+            userRepository.save(user);
+            return Optional.empty();
+        }
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        user.setResetToken(null);
+        user.setTokenExpiry(null);
+        User updatedUser = userRepository.save(user);
+
+        logger.info("Password reset successfully for user: {}", user.getEmail());
+        return Optional.of(updatedUser);
+    }
+
+    private void sendResetEmail(String email, String token) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+            helper.setTo(email);
+            helper.setSubject("Password Reset Request - " + companyName);
+            helper.setFrom(companyEmail);
+
+            String resetLink = resetPasswordUrl + "?token=" + token;
+            String htmlContent = """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <style>
+                        body { font-family: Arial, sans-serif; color: #333; }
+                        .container { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 5px; }
+                        .header { text-align: center; }
+                        .header img { max-width: 200px; }
+                        .content { margin: 20px 0; }
+                        .button { display: inline-block; padding: 10px 20px;background-color: #000000; color: #fff; text-decoration: none; border-radius: 50px; position: absolute; top: 50%; left: 50%;transform: translate(-50%, -50%);}    
+                        .footer { text-align: center; font-size: 12px; color: #777; margin-top: 20px; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <img src="%s" alt="%s Logo">
+                            <h2>Password Reset Request</h2>
+                        </div>
+                        <div class="content">
+                            <p>Dear User,</p>
+                            <p>We received a request to reset your password. Click the button below to reset it:</p>
+                            <p><a href="%s" class="button">Reset Password</a></p>
+                            <p>This link will expire in 1 hour. If you did not request this, please ignore this email or contact our support team.</p>
+                        </div>
+                        <div class="footer">
+                            <p>Regards,<br>The %s Team</p>
+                            <p>&copy; %d %s. All rights reserved.</p>
+                            <p><a href="mailto:%s">Contact Support</a></p>
+                        </div>
+                    </div>
+                </body>
+                </html>
+                """.formatted(companyLogoUrl, companyName, resetLink, companyName, LocalDateTime.now().getYear(), companyName, companyEmail);
+
+            helper.setText(htmlContent, true);  // true indicates HTML content
+            mailSender.send(message);
+            logger.info("Reset email sent successfully to: {}", email);
+        } catch (Exception e) {
+            logger.error("Failed to send reset email to {}: {}", email, e.getMessage(), e);
+            throw new RuntimeException("Failed to send reset email: " + e.getMessage(), e);
+        }
+    }
     private void validateRequiredFields(String email, String password, String role,
                                         String firstName, String lastName, String team) {
         if (email == null || email.trim().isEmpty()) {
