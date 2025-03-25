@@ -11,5 +11,6 @@ public record AuthResponse(
     public AuthResponse(String firstName, String lastName, String role,
                         String accessToken, String refreshToken) {
         this(firstName, lastName, role, accessToken, refreshToken, null);
+
     }
 }
