@@ -1,19 +1,24 @@
 package com.example.userservice.entity;
 
 public enum Role {
-    ADMIN,
-    MANAGER,
-    EMPLOYEE;
+    EMPLOYEE, MANAGER, ADMIN;
 
-    // Optional: Add a method to convert from string (case-insensitive)
-    public static Role fromString(String roleStr) {
-        if (roleStr == null) {
-            throw new IllegalArgumentException("Role cannot be null");
+    public static Role fromString(String role) {
+        if (role == null || role.trim().isEmpty()) {
+            throw new IllegalArgumentException("Role cannot be null or empty");
         }
+        String normalizedRole = role.trim().toUpperCase();
+        System.out.println("Role input: " + role + ", normalized: " + normalizedRole);
         try {
-            return Role.valueOf(roleStr.trim().toUpperCase());
+            return Role.valueOf(normalizedRole);
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid role: " + roleStr + ". Must be ADMIN, MANAGER, or EMPLOYEE");
+            System.out.println("Failed to parse role: " + role);
+            throw new IllegalArgumentException("Invalid role: " + role, e);
         }
+    }
+
+    @Override
+    public String toString() {
+        return name();
     }
 }

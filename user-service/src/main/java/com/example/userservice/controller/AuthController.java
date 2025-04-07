@@ -18,6 +18,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
@@ -91,17 +93,16 @@ public class AuthController {
                         user.getTeam().name()
                 ));
             }).orElseGet(() -> {
-                logger.warn("Registration failed for email: {}", userRequest.email());
+                logger.warn("Registration failed: Email already exists - {}", userRequest.email());
                 return ResponseEntity.badRequest()
-                        .body(new UserResponse(null, null, null, null, null, null,
-                                "Registration failed: Email already exists"));
+                        .body(new UserResponse(null, null, null, null, null, null, "Email already exists"));
             });
         } catch (IllegalArgumentException e) {
             logger.warn("Validation error during registration: {}", e.getMessage());
             return ResponseEntity.badRequest()
                     .body(new UserResponse(null, null, null, null, null, null, e.getMessage()));
         } catch (Exception e) {
-            logger.error("Unexpected error during registration", e);
+            logger.error("Unexpected error during registration: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(new UserResponse(null, null, null, null, null, null,
                             "Internal server error: " + e.getMessage()));
@@ -174,73 +175,59 @@ public class AuthController {
     }
 
     @PostMapping("/forgot-password")
-    public ResponseEntity<UserResponse> forgotPassword(@Valid @RequestBody ForgotPasswordRequest forgotRequest,
-                                                       BindingResult bindingResult) {
+    public ResponseEntity<Map<String, Object>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest forgotRequest,
+                                                              BindingResult bindingResult) {
+        Map<String, Object> response = new HashMap<>();
         if (bindingResult.hasErrors()) {
-            String errorMessage = getValidationErrorMessage(bindingResult);
-            return ResponseEntity.badRequest()
-                    .body(new UserResponse(null, null, null, null, null, null, errorMessage));
+            response.put("errorMessage", getValidationErrorMessage(bindingResult));
+            return ResponseEntity.badRequest().body(response);
         }
 
         try {
-            userService.generateResetToken(forgotRequest.email());
+            String token = userService.generateResetToken(forgotRequest.email());
+            response.put("message", "If the email exists, a reset link has been sent");
             logger.info("Password reset requested for email: {}", forgotRequest.email());
-            return ResponseEntity.ok(new UserResponse(null, null, null, null, null, null,
-                    "If the email exists, a reset link has been sent"));
+            return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             logger.warn("Validation error during forgot password: {}", e.getMessage());
-            return ResponseEntity.badRequest()
-                    .body(new UserResponse(null, null, null, null, null, null, e.getMessage()));
+            response.put("errorMessage", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
         } catch (RuntimeException e) {
-            logger.error("Email sending failed during forgot password: {}", e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new UserResponse(null, null, null, null, null, null,
-                            "Failed to send reset email: " + e.getMessage()));
-        } catch (Exception e) {
-            logger.error("Unexpected error during forgot password", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new UserResponse(null, null, null, null, null, null,
-                            "Internal server error: " + e.getMessage()));
+            logger.error("Email sending failed during forgot password: {}", e.getMessage(), e);
+            response.put("errorMessage", "Failed to send reset email: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
 
     @PostMapping("/reset-password")
-    public ResponseEntity<UserResponse> resetPassword(@Valid @RequestBody ResetPasswordRequest resetRequest,
-                                                      BindingResult bindingResult) {
+    public ResponseEntity<Map<String, Object>> resetPassword(@Valid @RequestBody ResetPasswordRequest resetRequest,
+                                                             BindingResult bindingResult) {
+        Map<String, Object> response = new HashMap<>();
         if (bindingResult.hasErrors()) {
-            String errorMessage = getValidationErrorMessage(bindingResult);
-            return ResponseEntity.badRequest()
-                    .body(new UserResponse(null, null, null, null, null, null, errorMessage));
+            response.put("errorMessage", getValidationErrorMessage(bindingResult));
+            return ResponseEntity.badRequest().body(response);
         }
 
         try {
             return userService.resetPassword(resetRequest.token(), resetRequest.newPassword())
                     .map(user -> {
-                        logger.info("Password reset completed for user: {}", user.getEmail());
-                        return ResponseEntity.ok(new UserResponse(
-                                user.getId(),
-                                user.getEmail(),
-                                user.getRole().name(),
-                                user.getFirstName(),
-                                user.getLastName(),
-                                user.getTeam().name()
-                        ));
+                        logger.info("Password reset successful for email: {}", user.getEmail());
+                        response.put("message", "Password reset successfully");
+                        return ResponseEntity.ok(response);
                     })
                     .orElseGet(() -> {
-                        logger.warn("Invalid or expired reset token: {}", resetRequest.token());
-                        return ResponseEntity.badRequest()
-                                .body(new UserResponse(null, null, null, null, null, null,
-                                        "Invalid or expired reset token"));
+                        logger.warn("Invalid or expired token for password reset: {}", resetRequest.token());
+                        response.put("errorMessage", "Invalid or expired reset token");
+                        return ResponseEntity.badRequest().body(response);
                     });
         } catch (IllegalArgumentException e) {
             logger.warn("Validation error during password reset: {}", e.getMessage());
-            return ResponseEntity.badRequest()
-                    .body(new UserResponse(null, null, null, null, null, null, e.getMessage()));
+            response.put("errorMessage", e.getMessage());
+            return ResponseEntity.badRequest().body(response);
         } catch (Exception e) {
-            logger.error("Unexpected error during password reset", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new UserResponse(null, null, null, null, null, null,
-                            "Internal server error: " + e.getMessage()));
+            logger.error("Unexpected error during password reset: {}", e.getMessage(), e);
+            response.put("errorMessage", "Internal server error: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
 

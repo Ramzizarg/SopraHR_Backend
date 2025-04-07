@@ -1,20 +1,21 @@
 package com.example.userservice.entity;
 
 public enum Team {
-    DEV,
-    DEVOPS,
-    BI,
-    RH;
+    DEV, QA, OPS, RH;
 
-    // Optional: Add a method to convert from string (case-insensitive)
-    public static Team fromString(String teamStr) {
-        if (teamStr == null) {
-            throw new IllegalArgumentException("Team cannot be null");
+    public static Team fromString(String team) {
+        if (team == null || team.trim().isEmpty()) {
+            throw new IllegalArgumentException("Team cannot be null or empty");
         }
         try {
-            return Team.valueOf(teamStr.trim().toUpperCase());
+            return Team.valueOf(team.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid team: " + teamStr + ". Must be DEV, DEVOPS, BI, or RH");
+            throw new IllegalArgumentException("Invalid team: " + team, e);
         }
+    }
+
+    @Override
+    public String toString() {
+        return name();
     }
 }
