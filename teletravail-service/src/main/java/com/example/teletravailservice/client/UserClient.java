@@ -16,6 +16,7 @@ public class UserClient {
     private final RestTemplate restTemplate;
     private final String userServiceUrl;
 
+
     public UserClient(RestTemplate restTemplate, @Value("${user.service.url}") String userServiceUrl) {
         this.restTemplate = restTemplate;
         this.userServiceUrl = userServiceUrl;
