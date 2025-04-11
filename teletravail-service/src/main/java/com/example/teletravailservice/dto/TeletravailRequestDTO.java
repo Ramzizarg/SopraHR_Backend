@@ -1,22 +1,22 @@
 package com.example.teletravailservice.dto;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.time.LocalDate;
 
 @Data
-@NoArgsConstructor
 public class TeletravailRequestDTO {
-    private Long userId;
+    @NotBlank(message = "Travail type is required")
     private String travailType;
-    private LocalDate teletravailDate;
-    private String travailMaison;
-    private String selectedPays;
-    private String selectedGouvernorat;
-    private String reason;
 
-    public void setTeletravailDate(String teletravailDate) {
-        this.teletravailDate = LocalDate.parse(teletravailDate);
-    }
+    @NotBlank(message = "Teletravail date is required")
+    private String teletravailDate;
+
+    @NotBlank(message = "Travail maison is required")
+    private String travailMaison;
+
+    private String selectedPays;
+
+    private String selectedGouvernorat;
+
+    private String reason;
 }

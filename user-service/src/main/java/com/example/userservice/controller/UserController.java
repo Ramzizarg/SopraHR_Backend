@@ -12,7 +12,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
@@ -93,6 +95,23 @@ public class UserController {
                     return ResponseEntity.status(HttpStatus.NOT_FOUND)
                             .body(new UserResponse(null, null, null, null, null, null,
                                     "User not found"));
+                });
+    }
+
+    @GetMapping("/validate-by-email/{email}")
+    public ResponseEntity<Map<String, Object>> validateByEmail(@PathVariable String email) {
+        return userService.getUserByEmail(email)
+                .map(user -> {
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("id", user.getId());
+                    response.put("email", user.getEmail());
+                    logger.info("User validated: {}", email);
+                    return ResponseEntity.ok(response);
+                })
+                .orElseGet(() -> {
+                    logger.warn("User not found for validation: {}", email);
+                    return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                            .body(Map.of("error", "User not found"));
                 });
     }
 

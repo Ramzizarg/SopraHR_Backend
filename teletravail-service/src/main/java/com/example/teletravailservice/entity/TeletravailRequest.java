@@ -1,34 +1,23 @@
 package com.example.teletravailservice.entity;
 
-
-
 import jakarta.persistence.*;
 import lombok.Data;
-import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "teletravail_requests")
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
 public class TeletravailRequest {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
     private Long userId;
 
-    @Column(nullable = false)
     private String travailType;
 
-    @Column(nullable = false)
-    private LocalDate teletravailDate;
+    private String teletravailDate;
 
-    @Column(nullable = false)
     private String travailMaison;
 
     private String selectedPays;
@@ -36,4 +25,12 @@ public class TeletravailRequest {
     private String selectedGouvernorat;
 
     private String reason;
+
+    @Column(updatable = false)
+    private LocalDateTime createdAt;
+
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+    }
 }
