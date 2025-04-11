@@ -31,7 +31,7 @@ public class UserClient {
                 new ParameterizedTypeReference<>() {}
         );
         if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
-            throw new IllegalArgumentException("User not found: " + email);
+            throw new IllegalArgumentException("Utilisateur non trouvé : " + email);
         }
         return ((Number) response.getBody().get("id")).longValue();
     }

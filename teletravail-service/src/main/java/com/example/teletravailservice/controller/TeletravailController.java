@@ -89,6 +89,32 @@ public class TeletravailController {
         }
     }
 
+    @GetMapping
+    public ResponseEntity<?> getUserRequests(@AuthenticationPrincipal String email) {
+        if (email == null) {
+            log.warn("Unauthorized request: No authenticated user");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ErrorResponse("Authentication error", "User not authenticated"));
+        }
+
+        try {
+            Long userId = teletravailService.getUserIdByEmail(email); // Assuming UserClient is used here
+            List<TeletravailResponseDTO> requests = teletravailService.getUserRequests(userId).stream()
+                    .map(TeletravailResponseDTO::new)
+                    .collect(Collectors.toList());
+            log.info("Returning {} requests for user {}", requests.size(), email);
+            return ResponseEntity.ok(requests);
+        } catch (IllegalArgumentException e) {
+            log.warn("Failed to fetch requests for user {}: {}", email, e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ErrorResponse("Invalid request", e.getMessage()));
+        } catch (Exception e) {
+            log.error("Server error fetching requests for user {}: {}", email, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ErrorResponse("Server error", "Unable to fetch user requests: " + e.getMessage()));
+        }
+    }
+
     private String getValidationErrorMessage(BindingResult bindingResult) {
         return bindingResult.getFieldErrors().stream()
                 .map(error -> error.getField() + ": " + error.getDefaultMessage())

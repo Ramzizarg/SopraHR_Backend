@@ -16,8 +16,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.LocalDate;
+import java.time.temporal.WeekFields;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -25,6 +28,7 @@ import java.util.stream.Collectors;
 @Transactional
 @Slf4j
 public class TeletravailService {
+
     private final TeletravailRequestRepository repository;
     private final RestTemplate restTemplate;
     private final UserClient userClient;
@@ -33,6 +37,7 @@ public class TeletravailService {
     private String apiKey;
 
     private static final String COUNTRY_STATE_CITY_API = "https://api.countrystatecity.in/v1";
+    private static final int MAX_DAYS_PER_WEEK = 2;
 
     public TeletravailService(TeletravailRequestRepository repository, RestTemplate restTemplate, UserClient userClient) {
         this.repository = repository;
@@ -48,8 +53,34 @@ public class TeletravailService {
         try {
             userId = userClient.validateUserByEmail(email);
         } catch (IllegalArgumentException e) {
-            log.warn("User validation failed: {}", e.getMessage());
+            log.warn("User validation failed for email {}: {}", email, e.getMessage());
             throw e;
+        }
+
+        LocalDate requestDate = LocalDate.parse(dto.getTeletravailDate());
+        WeekFields weekFields = WeekFields.of(Locale.getDefault());
+        int requestWeek = requestDate.get(weekFields.weekOfWeekBasedYear());
+        int requestYear = requestDate.get(weekFields.weekBasedYear());
+
+        List<TeletravailRequest> existingRequests = repository.findByUserIdAndWeek(userId, requestYear, requestWeek);
+
+        if (existingRequests.size() >= MAX_DAYS_PER_WEEK) {
+            log.warn("User {} exceeded max days limit for week {}-{}", email, requestYear, requestWeek);
+            throw new IllegalArgumentException("Vous avez déjà soumis des demandes pour 2 jours cette semaine.");
+        }
+
+        if (existingRequests.stream().anyMatch(r -> LocalDate.parse(r.getTeletravailDate()).equals(requestDate))) {
+            log.warn("User {} attempted duplicate request for date {}", email, requestDate);
+            throw new IllegalArgumentException("Vous avez déjà une demande pour ce jour.");
+        }
+
+        for (TeletravailRequest req : existingRequests) {
+            LocalDate existingDate = LocalDate.parse(req.getTeletravailDate());
+            long dayDifference = Math.abs(existingDate.toEpochDay() - requestDate.toEpochDay());
+            if (dayDifference == 1) {
+                log.warn("User {} attempted consecutive days: {} and {}", email, existingDate, requestDate);
+                throw new IllegalArgumentException("Les jours de télétravail ne doivent pas être consécutifs.");
+            }
         }
 
         TeletravailRequest request = new TeletravailRequest();
@@ -67,8 +98,8 @@ public class TeletravailService {
     }
 
     public TeletravailRequest userServiceFallback(TeletravailRequestDTO dto, String email, Throwable t) {
-        log.error("User service failed for email: {}, error: {}", email, t.getMessage());
-        throw new IllegalStateException("User service unavailable, please try again later");
+        log.error("User service failed for email {}: {}", email, t.getMessage());
+        throw new IllegalStateException("Service utilisateur indisponible, veuillez réessayer plus tard.");
     }
 
     @CircuitBreaker(name = "countryApi", fallbackMethod = "countryApiFallback")
@@ -90,9 +121,10 @@ public class TeletravailService {
                     .map(country -> (String) country.get("name"))
                     .sorted()
                     .collect(Collectors.toList());
-            log.info("Fetched {} countries", countries.size());
+            log.info("Fetched {} countries successfully", countries.size());
             return countries;
         }
+
         log.warn("No countries fetched from API");
         return Collections.emptyList();
     }
@@ -100,7 +132,8 @@ public class TeletravailService {
     @CircuitBreaker(name = "countryApi", fallbackMethod = "countryApiFallback")
     public List<String> getRegionsByCountry(String countryName) {
         if (countryName == null || countryName.trim().isEmpty()) {
-            throw new IllegalArgumentException("Country name is required");
+            log.warn("Invalid countryName provided: {}", countryName);
+            throw new IllegalArgumentException("Le nom du pays est requis.");
         }
 
         String countriesUrl = COUNTRY_STATE_CITY_API + "/countries";
@@ -117,14 +150,17 @@ public class TeletravailService {
 
         if (countriesResponse.getBody() == null) {
             log.warn("Failed to fetch countries for region lookup");
-            throw new IllegalStateException("Unable to fetch countries");
+            throw new IllegalStateException("Impossible de récupérer les pays.");
         }
 
         String countryIso2 = countriesResponse.getBody().stream()
                 .filter(c -> countryName.equalsIgnoreCase((String) c.get("name")))
                 .map(c -> (String) c.get("iso2"))
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Country not found: " + countryName));
+                .orElseThrow(() -> {
+                    log.warn("Country not found: {}", countryName);
+                    return new IllegalArgumentException("Pays non trouvé : " + countryName);
+                });
 
         String regionsUrl = COUNTRY_STATE_CITY_API + "/countries/" + countryIso2 + "/states";
         ResponseEntity<List<Map<String, Object>>> regionsResponse = restTemplate.exchange(
@@ -142,34 +178,65 @@ public class TeletravailService {
             log.info("Fetched {} regions for country '{}'", regions.size(), countryName);
             return regions;
         }
+
         log.warn("No regions found for country: {}", countryName);
         return Collections.emptyList();
     }
 
     public List<String> countryApiFallback(Throwable t) {
         log.error("Country API failed: {}", t.getMessage());
-        return List.of("Location service unavailable");
+        return Collections.singletonList("Service de localisation indisponible");
+    }
+
+    /**
+     * Retrieves all teletravail requests for a given user.
+     * @param userId ID of the user.
+     * @return List of TeletravailRequest entities.
+     */
+    public List<TeletravailRequest> getUserRequests(Long userId) {
+        List<TeletravailRequest> requests = repository.findByUserId(userId);
+        log.info("Fetched {} teletravail requests for user ID {}", requests.size(), userId);
+        return requests;
     }
 
     private void validateRequest(TeletravailRequestDTO dto) {
         boolean requiresLocation = "non".equalsIgnoreCase(dto.getTravailMaison());
         boolean requiresReason = !"reguliere".equalsIgnoreCase(dto.getTravailType());
 
-        if (requiresLocation && (dto.getSelectedPays() == null || dto.getSelectedPays().trim().isEmpty() ||
-                dto.getSelectedGouvernorat() == null || dto.getSelectedGouvernorat().trim().isEmpty())) {
-            throw new IllegalArgumentException("Country and region are required when working outside home");
-        }
-
-        if (requiresReason && (dto.getReason() == null || dto.getReason().trim().isEmpty())) {
-            throw new IllegalArgumentException("Reason is required for non-regular teletravail");
-        }
-
         if (dto.getTeletravailDate() == null || dto.getTeletravailDate().trim().isEmpty()) {
-            throw new IllegalArgumentException("Teletravail date is required");
+            log.warn("Teletravail date is missing");
+            throw new IllegalArgumentException("La date de télétravail est requise.");
         }
 
         if (dto.getTravailType() == null || dto.getTravailType().trim().isEmpty()) {
-            throw new IllegalArgumentException("Travail type is required");
+            log.warn("Travail type is missing");
+            throw new IllegalArgumentException("Le type de travail est requis.");
         }
+
+        if (dto.getTravailMaison() == null || dto.getTravailMaison().trim().isEmpty()) {
+            log.warn("Travail maison is missing");
+            throw new IllegalArgumentException("Le champ 'Travail à domicile' est requis.");
+        }
+
+        if (requiresLocation && (dto.getSelectedPays() == null || dto.getSelectedPays().trim().isEmpty() ||
+                dto.getSelectedGouvernorat() == null || dto.getSelectedGouvernorat().trim().isEmpty())) {
+            log.warn("Location fields are missing for travailMaison='non'");
+            throw new IllegalArgumentException("Le pays et la région sont requis lorsque vous ne travaillez pas à domicile.");
+        }
+
+        if (requiresReason && (dto.getReason() == null || dto.getReason().trim().isEmpty())) {
+            log.warn("Reason is missing for non-regular travailType");
+            throw new IllegalArgumentException("Une raison est requise pour un télétravail non régulier.");
+        }
+
+        LocalDate date = LocalDate.parse(dto.getTeletravailDate());
+        if (date.getDayOfWeek().getValue() > 5) {
+            log.warn("Requested date {} is a weekend", dto.getTeletravailDate());
+            throw new IllegalArgumentException("Les weekends ne sont pas disponibles pour le télétravail.");
+        }
+    }
+
+    public Long getUserIdByEmail(String email) {
+        return userClient.validateUserByEmail(email);
     }
 }
