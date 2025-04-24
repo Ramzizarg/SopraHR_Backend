@@ -1,301 +1,254 @@
 package com.example.reservationservice.service;
 
-import com.example.reservationservice.dto.BookingRequestDTO;
-import com.example.reservationservice.dto.DeskDTO;
-import com.example.reservationservice.dto.PlanDTO;
-import com.example.reservationservice.dto.WallDTO;
-import com.example.reservationservice.entity.Booking;
-import com.example.reservationservice.entity.Desk;
-import com.example.reservationservice.entity.Plan;
-import com.example.reservationservice.entity.Wall;
-import com.example.reservationservice.repository.BookingRepository;
+import com.example.reservationservice.dto.ReservationDTO;
+import com.example.reservationservice.exception.BadRequestException;
+import com.example.reservationservice.exception.ResourceNotFoundException;
+import com.example.reservationservice.exception.UnauthorizedException;
+import com.example.reservationservice.model.Desk;
+import com.example.reservationservice.model.Reservation;
 import com.example.reservationservice.repository.DeskRepository;
-import com.example.reservationservice.repository.PlanRepository;
-import com.example.reservationservice.repository.WallRepository;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
+import com.example.reservationservice.repository.ReservationRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
-@Slf4j
 public class ReservationService {
-    private final PlanRepository planRepository;
+
+    private final ReservationRepository reservationRepository;
     private final DeskRepository deskRepository;
-    private final WallRepository wallRepository;
-    private final BookingRepository bookingRepository;
-    private final RestTemplate restTemplate;
-    private final String userserviceUrl;
+    private final UserService userService;
 
-    public ReservationService(PlanRepository planRepository,
-                              DeskRepository deskRepository,
-                              WallRepository wallRepository,
-                              BookingRepository bookingRepository,
-                              RestTemplate restTemplate,
-                              @Value("${userservice.url}") String userserviceUrl) {
-        this.planRepository = planRepository;
+    @Autowired
+    public ReservationService(ReservationRepository reservationRepository, 
+                           DeskRepository deskRepository,
+                           UserService userService) {
+        this.reservationRepository = reservationRepository;
         this.deskRepository = deskRepository;
-        this.wallRepository = wallRepository;
-        this.bookingRepository = bookingRepository;
-        this.restTemplate = restTemplate;
-        this.userserviceUrl = userserviceUrl;
+        this.userService = userService;
+    }
+
+    public List<ReservationDTO> getAllReservations(String token) {
+        // Get all reservations if manager, otherwise only get the user's reservations
+        boolean isManager = userService.isManager(token);
+        String userId = userService.getUserId(token);
+        
+        if (isManager) {
+            return reservationRepository.findAll().stream()
+                    .map(this::convertToDTO)
+                    .collect(Collectors.toList());
+        } else {
+            return reservationRepository.findByUserId(userId).stream()
+                    .map(this::convertToDTO)
+                    .collect(Collectors.toList());
+        }
+    }
+
+    public ReservationDTO getReservationById(Long id, String token) {
+        Reservation reservation = reservationRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Reservation", "id", id));
+        
+        // Check if user is manager or the owner of the reservation
+        boolean isManager = userService.isManager(token);
+        String userId = userService.getUserId(token);
+        
+        if (!isManager && !reservation.getUserId().equals(userId)) {
+            throw new UnauthorizedException("You are not authorized to view this reservation");
+        }
+        
+        return convertToDTO(reservation);
+    }
+
+    public List<ReservationDTO> getReservationsByDate(String date, String token) {
+        // Get reservations by date if manager, otherwise only get the user's reservations
+        boolean isManager = userService.isManager(token);
+        String userId = userService.getUserId(token);
+        
+        if (isManager) {
+            return reservationRepository.findByBookingDate(date).stream()
+                    .map(this::convertToDTO)
+                    .collect(Collectors.toList());
+        } else {
+            return reservationRepository.findByBookingDate(date).stream()
+                    .filter(r -> r.getUserId().equals(userId))
+                    .map(this::convertToDTO)
+                    .collect(Collectors.toList());
+        }
+    }
+
+    public List<ReservationDTO> getUserReservations(String token) {
+        String userId = userService.getUserId(token);
+        return reservationRepository.findByUserId(userId).stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
     }
 
     @Transactional
-    public PlanDTO createPlan(PlanDTO planDTO, String email) {
-        if (planDTO == null || planDTO.getId() == null) {
-            throw new IllegalArgumentException("PlanDTO or plan ID cannot be null");
+    public ReservationDTO createReservation(ReservationDTO reservationDTO, String token) {
+        // Validate booking date
+        validateBookingDate(reservationDTO.getBookingDate());
+        
+        // Get user ID
+        String userId = userService.getUserId(token);
+        
+        // Check if user already has a reservation for this date
+        List<Reservation> existingReservations = reservationRepository.findByUserIdAndBookingDate(userId, reservationDTO.getBookingDate());
+        if (!existingReservations.isEmpty()) {
+            throw new BadRequestException("You already have a desk reservation for this date. Only one desk reservation is allowed per day.");
         }
-
-        Long userId = getUserIdByEmail(email);
-        if (userId == null) {
-            throw new IllegalArgumentException("User not found for email: " + email);
+        
+        // Find the desk
+        Desk desk = deskRepository.findById(reservationDTO.getDeskId())
+                .orElseThrow(() -> new ResourceNotFoundException("Desk", "id", reservationDTO.getDeskId()));
+        
+        // Check if the desk is available for this date
+        if (desk.isReservedForDate(reservationDTO.getBookingDate())) {
+            throw new BadRequestException("Desk is already reserved for this date");
         }
-
-        Plan plan = new Plan();
-        plan.setPlanId(planDTO.getId());
-        plan.setXPosition(planDTO.getLeft());
-        plan.setTop(planDTO.getTop());
-        plan.setWidth(planDTO.getWidth());
-        plan.setHeight(planDTO.getHeight());
-
-        List<Desk> desks = new ArrayList<>();
-        for (DeskDTO deskDTO : planDTO.getDesks()) {
-            if (deskDTO.getId() == null) {
-                throw new IllegalArgumentException("Desk ID cannot be null");
-            }
-            Desk desk = new Desk();
-            desk.setDeskId(deskDTO.getId());
-            desk.setXPosition(deskDTO.getLeft());
-            desk.setTop(deskDTO.getTop());
-            desk.setRotation(deskDTO.getRotation());
-            desk.setPlan(plan);
-            desks.add(desk);
-        }
-        plan.setDesks(desks);
-
-        List<Wall> walls = new ArrayList<>();
-        for (WallDTO wallDTO : planDTO.getWalls()) {
-            if (wallDTO.getId() == null) {
-                throw new IllegalArgumentException("Wall ID cannot be null");
-            }
-            Wall wall = new Wall();
-            wall.setWallId(wallDTO.getId());
-            wall.setXPosition(wallDTO.getLeft());
-            wall.setTop(wallDTO.getTop());
-            wall.setWidth(wallDTO.getWidth());
-            wall.setHeight(wallDTO.getHeight());
-            wall.setRotation(wallDTO.getRotation());
-            wall.setPlan(plan);
-            walls.add(wall);
-        }
-        plan.setWalls(walls);
-
-        plan = planRepository.save(plan);
-        return toPlanDTO(plan);
+        
+        // Always set employee name from the authenticated user's full name (first + last name)
+        String employeeName = userService.getFullName(token);
+        
+        // Create the reservation
+        Reservation reservation = new Reservation();
+        reservation.setEmployeeName(employeeName);
+        reservation.setUserId(userId);
+        reservation.setBookingDate(reservationDTO.getBookingDate());
+        reservation.setDuration(Reservation.Duration.fromValue(reservationDTO.getDuration()));
+        reservation.setDesk(desk);
+        
+        // Update desk status
+        desk.setStatus(Desk.DeskStatus.RESERVED);
+        
+        Reservation savedReservation = reservationRepository.save(reservation);
+        return convertToDTO(savedReservation);
     }
 
     @Transactional
-    public void deletePlan(String planId) {
-        if (planId == null) {
-            throw new IllegalArgumentException("Plan ID cannot be null");
+    public ReservationDTO updateReservation(Long id, ReservationDTO reservationDTO, String token) {
+        Reservation reservation = reservationRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Reservation", "id", id));
+        
+        // Check if user is manager or the owner of the reservation
+        boolean isManager = userService.isManager(token);
+        String userId = userService.getUserId(token);
+        
+        if (!isManager && !reservation.getUserId().equals(userId)) {
+            throw new UnauthorizedException("You are not authorized to update this reservation");
         }
-        planRepository.findByPlanId(planId)
-                .ifPresentOrElse(
-                        planRepository::delete,
-                        () -> {
-                            throw new IllegalArgumentException("Plan not found: " + planId);
-                        });
-    }
-
-    @Transactional(readOnly = true)
-    public List<PlanDTO> getAllPlans() {
-        return planRepository.findAll().stream()
-                .map(this::toPlanDTO)
-                .toList();
-    }
-
-    @Transactional
-    public PlanDTO updatePlan(PlanDTO planDTO) {
-        if (planDTO == null || planDTO.getId() == null) {
-            throw new IllegalArgumentException("PlanDTO or plan ID cannot be null");
-        }
-
-        Plan plan = planRepository.findByPlanId(planDTO.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Plan not found: " + planDTO.getId()));
-
-        plan.setXPosition(planDTO.getLeft());
-        plan.setTop(planDTO.getTop());
-        plan.setWidth(planDTO.getWidth());
-        plan.setHeight(planDTO.getHeight());
-
-        plan.getDesks().clear();
-        for (DeskDTO deskDTO : planDTO.getDesks()) {
-            if (deskDTO.getId() == null) {
-                throw new IllegalArgumentException("Desk ID cannot be null");
+        
+        // Validate booking date
+        validateBookingDate(reservationDTO.getBookingDate());
+        
+        // Check if date is changing and if user already has a reservation for the new date (that's not this one)
+        if (!reservation.getBookingDate().equals(reservationDTO.getBookingDate())) {
+            List<Reservation> existingReservations = reservationRepository.findByUserIdAndBookingDate(userId, reservationDTO.getBookingDate());
+            // If there's already a reservation for this date that's not the current one being updated
+            boolean hasOtherReservation = existingReservations.stream()
+                    .anyMatch(r -> !r.getId().equals(reservation.getId()));
+            
+            if (hasOtherReservation) {
+                throw new BadRequestException("You already have a desk reservation for this date. Only one desk reservation is allowed per day.");
             }
-            Desk desk = new Desk();
-            desk.setDeskId(deskDTO.getId());
-            desk.setXPosition(deskDTO.getLeft());
-            desk.setTop(deskDTO.getTop());
-            desk.setRotation(deskDTO.getRotation());
-            desk.setPlan(plan);
-            plan.getDesks().add(desk);
         }
-
-        plan.getWalls().clear();
-        for (WallDTO wallDTO : planDTO.getWalls()) {
-            if (wallDTO.getId() == null) {
-                throw new IllegalArgumentException("Wall ID cannot be null");
+        
+        // If changing the desk, check if the new desk is available for this date
+        if (!reservation.getDesk().getId().equals(reservationDTO.getDeskId())) {
+            Desk newDesk = deskRepository.findById(reservationDTO.getDeskId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Desk", "id", reservationDTO.getDeskId()));
+            
+            // If the date is the same, we need to check if the new desk is already reserved for this date by someone else
+            if (newDesk.isReservedForDate(reservationDTO.getBookingDate())) {
+                // Check if the reservation for this desk and date belongs to someone else
+                Reservation existingReservation = newDesk.getReservationForDate(reservationDTO.getBookingDate());
+                if (existingReservation != null && !existingReservation.getId().equals(reservation.getId())) {
+                    throw new BadRequestException("New desk is already reserved for this date");
+                }
             }
-            Wall wall = new Wall();
-            wall.setWallId(wallDTO.getId());
-            wall.setXPosition(wallDTO.getLeft());
-            wall.setTop(wallDTO.getTop());
-            wall.setWidth(wallDTO.getWidth());
-            wall.setHeight(wallDTO.getHeight());
-            wall.setRotation(wallDTO.getRotation());
-            wall.setPlan(plan);
-            plan.getWalls().add(wall);
+            
+            // Update old desk status
+            reservation.getDesk().setStatus(Desk.DeskStatus.AVAILABLE);
+            
+            // Set new desk
+            reservation.setDesk(newDesk);
+            newDesk.setStatus(Desk.DeskStatus.RESERVED);
         }
-
-        plan = planRepository.save(plan);
-        return toPlanDTO(plan);
+        
+        // Update reservation details - always use the authenticated user's full name
+        reservation.setEmployeeName(userService.getFullName(token));
+        reservation.setBookingDate(reservationDTO.getBookingDate());
+        reservation.setDuration(Reservation.Duration.fromValue(reservationDTO.getDuration()));
+        
+        Reservation updatedReservation = reservationRepository.save(reservation);
+        return convertToDTO(updatedReservation);
     }
 
     @Transactional
-    public void bookDesk(BookingRequestDTO request, String email) {
-        if (request == null || request.getDeskId() == null || request.getBookingDates() == null) {
-            throw new IllegalArgumentException("Booking request or required fields cannot be null");
+    public void deleteReservation(Long id, String token) {
+        Reservation reservation = reservationRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Reservation", "id", id));
+        
+        // Check if user is manager or the owner of the reservation
+        boolean isManager = userService.isManager(token);
+        String userId = userService.getUserId(token);
+        
+        if (!isManager && !reservation.getUserId().equals(userId)) {
+            throw new UnauthorizedException("You are not authorized to delete this reservation");
         }
+        
+        // Update desk status
+        Desk desk = reservation.getDesk();
+        desk.setStatus(Desk.DeskStatus.AVAILABLE);
+        
+        reservationRepository.delete(reservation);
+    }
 
-        Long userId = getUserIdByEmail(email);
-        if (userId == null) {
-            throw new IllegalArgumentException("User not found for email: " + email);
+    /**
+     * Find all reservations for a specific user in a date range
+     * @param startDate the start date
+     * @param endDate the end date
+     * @param token the JWT token
+     * @return list of reservations
+     */
+    public List<ReservationDTO> getUserReservationsInDateRange(String startDate, String endDate, String token) {
+        String userId = userService.getUserId(token);
+        return reservationRepository.findUserReservationsInDateRange(userId, startDate, endDate).stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Validate booking date - cannot be in the past or more than 2 weeks in the future
+     * @param bookingDate the booking date
+     */
+    private void validateBookingDate(String bookingDate) {
+        LocalDate today = LocalDate.now();
+        LocalDate date = LocalDate.parse(bookingDate, DateTimeFormatter.ISO_DATE);
+        
+        if (date.isBefore(today)) {
+            throw new BadRequestException("Cannot make a reservation for a past date");
         }
-
-        Desk desk = deskRepository.findByDeskId(request.getDeskId())
-                .orElseThrow(() -> new IllegalArgumentException("Desk not found: " + request.getDeskId()));
-
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-
-        for (String dateStr : request.getBookingDates()) {
-            LocalDate bookingDate;
-            try {
-                bookingDate = LocalDate.parse(dateStr, formatter);
-            } catch (Exception e) {
-                throw new IllegalArgumentException("Invalid date format: " + dateStr);
-            }
-
-            List<Booking> existingBookings = bookingRepository.findByDeskAndBookingDate(desk, bookingDate);
-            if (!existingBookings.isEmpty()) {
-                throw new IllegalArgumentException("Desk already booked on " + dateStr);
-            }
-
-            Booking booking = new Booking();
-            booking.setUserId(userId);
-            booking.setEmployeeName(request.getEmployeeName());
-            booking.setBookingDate(bookingDate);
-            booking.setDuration(request.getDuration());
-            booking.setDesk(desk);
-            bookingRepository.save(booking);
+        
+        if (date.isAfter(today.plusDays(14))) {
+            throw new BadRequestException("Cannot make a reservation more than 2 weeks in advance");
         }
     }
 
-    @Transactional
-    public void cancelBooking(Long deskId, String bookingDate) {
-        if (deskId == null || bookingDate == null) {
-            throw new IllegalArgumentException("Desk ID or booking date cannot be null");
-        }
-
-        Desk desk = deskRepository.findByDeskId(deskId)
-                .orElseThrow(() -> new IllegalArgumentException("Desk not found: " + deskId));
-
-        LocalDate date;
-        try {
-            date = LocalDate.parse(bookingDate, DateTimeFormatter.ofPattern("yyyy-MM-dd"));
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid date format: " + bookingDate);
-        }
-
-        List<Booking> bookings = bookingRepository.findByDeskAndBookingDate(desk, date);
-        if (bookings.isEmpty()) {
-            throw new IllegalArgumentException("No bookings found for desk " + deskId + " on " + bookingDate);
-        }
-        bookingRepository.deleteAll(bookings);
-    }
-
-    private PlanDTO toPlanDTO(Plan plan) {
-        PlanDTO planDTO = new PlanDTO();
-        planDTO.setId(plan.getPlanId());
-        planDTO.setLeft(plan.getXPosition());
-        planDTO.setTop(plan.getTop());
-        planDTO.setWidth(plan.getWidth());
-        planDTO.setHeight(plan.getHeight());
-
-        List<DeskDTO> deskDTOs = new ArrayList<>();
-        for (Desk desk : plan.getDesks()) {
-            DeskDTO deskDTO = new DeskDTO();
-            deskDTO.setId(desk.getDeskId());
-            deskDTO.setLeft(desk.getXPosition());
-            deskDTO.setTop(desk.getTop());
-            deskDTO.setRotation(desk.getRotation());
-
-            LocalDate currentDate = LocalDate.now();
-            List<Booking> bookings = bookingRepository.findByDeskAndBookingDate(desk, currentDate);
-            if (!bookings.isEmpty()) {
-                Booking booking = bookings.get(0);
-                deskDTO.setStatus("reserved");
-                deskDTO.setEmployeeName(booking.getEmployeeName());
-                deskDTO.setDuration(booking.getDuration());
-                deskDTO.setBookingDate(booking.getBookingDate().toString());
-            } else {
-                deskDTO.setStatus("available");
-            }
-            deskDTOs.add(deskDTO);
-        }
-        planDTO.setDesks(deskDTOs);
-
-        List<WallDTO> wallDTOs = plan.getWalls().stream()
-                .map(wall -> {
-                    WallDTO wallDTO = new WallDTO();
-                    wallDTO.setId(wall.getWallId());
-                    wallDTO.setLeft(wall.getXPosition());
-                    wallDTO.setTop(wall.getTop());
-                    wallDTO.setWidth(wall.getWidth());
-                    wallDTO.setHeight(wall.getHeight());
-                    wallDTO.setRotation(wall.getRotation());
-                    return wallDTO;
-                })
-                .toList();
-        planDTO.setWalls(wallDTOs);
-
-        return planDTO;
-    }
-
-    private Long getUserIdByEmail(String email) {
-        if (email == null) {
-            throw new IllegalArgumentException("Email cannot be null");
-        }
-        try {
-            String url = userserviceUrl + "/validate-by-email/" + email;
-            Map<String, Long> response = restTemplate.getForObject(url, Map.class);
-            if (response == null || !response.containsKey("id")) {
-                log.error("Invalid response from userservice for email: {}", email);
-                return null;
-            }
-            return response.get("id");
-        } catch (Exception e) {
-            log.error("Failed to fetch userId for email {}: {}", email, e.getMessage());
-            throw new RuntimeException("Userservice unavailable", e);
-        }
+    private ReservationDTO convertToDTO(Reservation reservation) {
+        ReservationDTO reservationDTO = new ReservationDTO();
+        reservationDTO.setId(reservation.getId());
+        reservationDTO.setEmployeeName(reservation.getEmployeeName());
+        reservationDTO.setUserId(reservation.getUserId());
+        reservationDTO.setBookingDate(reservation.getBookingDate());
+        reservationDTO.setDuration(reservation.getDuration().getValue());
+        reservationDTO.setDeskId(reservation.getDesk().getId());
+        reservationDTO.setCreatedAt(reservation.getCreatedAt());
+        reservationDTO.setUpdatedAt(reservation.getUpdatedAt());
+        return reservationDTO;
     }
 }
