@@ -97,6 +97,47 @@ public class UserController {
                                     "User not found"));
                 });
     }
+    
+    /**
+     * Public endpoint for internal service-to-service communication
+     * This endpoint is not secured and allows other services to fetch basic user information
+     * without authentication. Only meant to be used by internal services within the system.
+     */
+    @GetMapping("/public/{id}")
+    public ResponseEntity<Map<String, Object>> getPublicUserById(@PathVariable Long id) {
+        return userService.getUserById(id)
+                .map(user -> {
+                    logger.info("User retrieved from public endpoint: ID {}", id);
+                    Map<String, Object> userMap = new HashMap<>();
+                    userMap.put("id", user.getId());
+                    userMap.put("firstName", user.getFirstName());
+                    userMap.put("lastName", user.getLastName());
+                    // Only expose minimal necessary information for display purposes
+                    return ResponseEntity.ok(userMap);
+                })
+                .orElseGet(() -> {
+                    logger.warn("User not found in public endpoint: ID {}", id);
+                    return ResponseEntity.status(HttpStatus.NOT_FOUND).body(null);
+                });
+    }
+    
+    /**
+     * Public endpoint to get just the full name of a user
+     * Useful for service-to-service communication where only the display name is needed
+     */
+    @GetMapping("/public/name/{id}")
+    public ResponseEntity<String> getPublicUserFullName(@PathVariable Long id) {
+        return userService.getUserById(id)
+                .map(user -> {
+                    logger.info("User name retrieved from public endpoint: ID {}", id);
+                    String fullName = user.getFirstName() + " " + user.getLastName();
+                    return ResponseEntity.ok(fullName);
+                })
+                .orElseGet(() -> {
+                    logger.warn("User not found in public endpoint for name: ID {}", id);
+                    return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User " + id);
+                });
+    }
 
     @GetMapping("/validate-by-email/{email}")
     public ResponseEntity<Map<String, Object>> validateByEmail(@PathVariable String email) {

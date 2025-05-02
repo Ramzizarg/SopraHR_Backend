@@ -1,9 +1,11 @@
 package com.example.teletravailservice.service;
 
+import com.example.teletravailservice.client.PlanningClient;
 import com.example.teletravailservice.client.UserClient;
 import com.example.teletravailservice.dto.TeletravailRequestDTO;
 import com.example.teletravailservice.entity.TeletravailRequest;
 import com.example.teletravailservice.repository.TeletravailRequestRepository;
+import feign.FeignException;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,6 +17,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.time.LocalDate;
 import java.time.temporal.WeekFields;
@@ -32,6 +36,7 @@ public class TeletravailService {
     private final TeletravailRequestRepository repository;
     private final RestTemplate restTemplate;
     private final UserClient userClient;
+    private final PlanningClient planningClient;
 
     @Value("${api.countrystatecity.key}")
     private String apiKey;
@@ -39,10 +44,12 @@ public class TeletravailService {
     private static final String COUNTRY_STATE_CITY_API = "https://api.countrystatecity.in/v1";
     private static final int MAX_DAYS_PER_WEEK = 2;
 
-    public TeletravailService(TeletravailRequestRepository repository, RestTemplate restTemplate, UserClient userClient) {
+    public TeletravailService(TeletravailRequestRepository repository, RestTemplate restTemplate, 
+            UserClient userClient, PlanningClient planningClient) {
         this.repository = repository;
         this.restTemplate = restTemplate;
         this.userClient = userClient;
+        this.planningClient = planningClient;
     }
 
     @CircuitBreaker(name = "userService", fallbackMethod = "userServiceFallback")
@@ -94,6 +101,44 @@ public class TeletravailService {
 
         TeletravailRequest savedRequest = repository.save(request);
         log.info("Teletravail request saved successfully for user {}: ID {}", email, savedRequest.getId());
+        
+        // Get the Authorization header from the current request context
+        try {
+            log.info("Preparing to update planning for user {}", userId);
+            ServletRequestAttributes requestAttributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+            
+            if (requestAttributes == null) {
+                log.error("Request attributes are null - cannot update planning");
+                return savedRequest;
+            }
+            
+            String authHeader = requestAttributes.getRequest().getHeader("Authorization");
+            log.info("Auth token for planning update: {}", authHeader != null ? "present (length: " + authHeader.length() + ")" : "MISSING");
+            
+            if (authHeader == null) {
+                log.error("Authorization header is missing - cannot update planning");
+                return savedRequest;
+            }
+            
+            // Log the exact URL and payload being sent to planning service
+            log.info("Calling planning-service at http://localhost:8001/api/planning/update-for-user/{} with auth token", userId);
+            
+            // Automatically update planning for this user
+            ResponseEntity<String> response = planningClient.updatePlanningForUser(userId, authHeader);
+            
+            log.info("Planning update call successful: status={}, body={}", 
+                    response.getStatusCode(), response.getBody());
+            
+        } catch (FeignException fe) {
+            // Specific handling for Feign exceptions which have more details
+            log.error("Feign error updating planning for user {}: status={}, message={}", 
+                    userId, fe.status(), fe.getMessage(), fe);
+            // Still allow the telework request to succeed
+        } catch (Exception e) {
+            // Don't fail the main transaction if planning update fails
+            log.error("Could not update planning after telework request: {}", e.getMessage(), e);
+        }
+        
         return savedRequest;
     }
 

@@ -5,6 +5,7 @@ import com.example.teletravailservice.dto.TeletravailRequestDTO;
 import com.example.teletravailservice.dto.TeletravailResponseDTO;
 import com.example.teletravailservice.entity.TeletravailRequest;
 import com.example.teletravailservice.service.TeletravailService;
+import com.example.teletravailservice.client.PlanningClient;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -22,9 +23,11 @@ import java.util.stream.Collectors;
 @CrossOrigin(origins = "http://localhost:4200", methods = {RequestMethod.GET, RequestMethod.POST})
 public class TeletravailController {
     private final TeletravailService teletravailService;
+    private final PlanningClient planningClient;
 
-    public TeletravailController(TeletravailService teletravailService) {
+    public TeletravailController(TeletravailService teletravailService, PlanningClient planningClient) {
         this.teletravailService = teletravailService;
+        this.planningClient = planningClient;
     }
 
     @PostMapping
@@ -47,6 +50,10 @@ public class TeletravailController {
         try {
             TeletravailRequest savedRequest = teletravailService.saveRequest(requestDTO, email);
             log.info("Teletravail request submitted successfully for user {}: ID {}", email, savedRequest.getId());
+            
+            // Notify planning service of the new teletravail request
+            notifyPlanningService(savedRequest);
+            
             return ResponseEntity.ok(new TeletravailResponseDTO(savedRequest));
         } catch (IllegalArgumentException e) {
             log.warn("Bad request: {}", e.getMessage());
@@ -55,6 +62,20 @@ public class TeletravailController {
             log.error("Failed to submit teletravail request: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(new TeletravailResponseDTO("Server error: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Notify the planning service of changes to teletravail requests
+     * @param request The teletravail request that was created/updated
+     */
+    private void notifyPlanningService(TeletravailRequest request) {
+        try {
+            log.info("Notifying planning service of teletravail request ID: {}", request.getId());
+            planningClient.syncTeletravailRequest(request);
+        } catch (Exception e) {
+            // Log but don't fail the main operation if notification fails
+            log.error("Failed to notify planning service: {}", e.getMessage(), e);
         }
     }
 
@@ -112,6 +133,31 @@ public class TeletravailController {
             log.error("Server error fetching requests for user {}: {}", email, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(new ErrorResponse("Server error", "Unable to fetch user requests: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * Get all teletravail requests for a specific user by user ID.
+     * This endpoint is used by other microservices via Feign clients.
+     * 
+     * @param userId The ID of the user to get requests for
+     * @return List of teletravail requests for the user
+     */
+    @GetMapping("/user/{userId}")
+    public ResponseEntity<List<TeletravailRequest>> getUserRequestsById(
+            @PathVariable Long userId,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        
+        log.info("Received request for user ID {} with auth token: {}", userId, 
+                authHeader != null ? "present" : "missing");
+        
+        try {
+            List<TeletravailRequest> userRequests = teletravailService.getUserRequests(userId);
+            log.info("Fetched {} teletravail requests for user ID {}", userRequests.size(), userId);
+            return ResponseEntity.ok(userRequests);
+        } catch (Exception e) {
+            log.error("Failed to fetch teletravail requests for user ID {}: {}", userId, e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(List.of());
         }
     }
 

@@ -36,7 +36,7 @@ public class ReservationService {
     public List<ReservationDTO> getAllReservations(String token) {
         // Get all reservations if manager, otherwise only get the user's reservations
         boolean isManager = userService.isManager(token);
-        String userId = userService.getUserId(token);
+        Long userId = userService.getUserIdDirect(token);
         
         if (isManager) {
             return reservationRepository.findAll().stream()
@@ -55,7 +55,7 @@ public class ReservationService {
         
         // Check if user is manager or the owner of the reservation
         boolean isManager = userService.isManager(token);
-        String userId = userService.getUserId(token);
+        Long userId = userService.getUserIdDirect(token);
         
         if (!isManager && !reservation.getUserId().equals(userId)) {
             throw new UnauthorizedException("You are not authorized to view this reservation");
@@ -67,7 +67,7 @@ public class ReservationService {
     public List<ReservationDTO> getReservationsByDate(String date, String token) {
         // Get reservations by date if manager, otherwise only get the user's reservations
         boolean isManager = userService.isManager(token);
-        String userId = userService.getUserId(token);
+        Long userId = userService.getUserIdDirect(token);
         
         if (isManager) {
             return reservationRepository.findByBookingDate(date).stream()
@@ -82,7 +82,7 @@ public class ReservationService {
     }
 
     public List<ReservationDTO> getUserReservations(String token) {
-        String userId = userService.getUserId(token);
+        Long userId = userService.getUserIdDirect(token);
         return reservationRepository.findByUserId(userId).stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
@@ -94,7 +94,7 @@ public class ReservationService {
         validateBookingDate(reservationDTO.getBookingDate());
         
         // Get user ID
-        String userId = userService.getUserId(token);
+        Long userId = userService.getUserIdDirect(token);
         
         // Check if user already has a reservation for this date
         List<Reservation> existingReservations = reservationRepository.findByUserIdAndBookingDate(userId, reservationDTO.getBookingDate());
@@ -102,17 +102,18 @@ public class ReservationService {
             throw new BadRequestException("You already have a desk reservation for this date. Only one desk reservation is allowed per day.");
         }
         
-        // Find the desk
+        // Get desk
         Desk desk = deskRepository.findById(reservationDTO.getDeskId())
                 .orElseThrow(() -> new ResourceNotFoundException("Desk", "id", reservationDTO.getDeskId()));
         
-        // Check if the desk is available for this date
-        if (desk.isReservedForDate(reservationDTO.getBookingDate())) {
+        // Check if desk is available
+        List<Reservation> existingReservationsForDesk = reservationRepository.findReservationsByDeskAndDate(desk.getId(), reservationDTO.getBookingDate());
+        if (!existingReservationsForDesk.isEmpty()) {
             throw new BadRequestException("Desk is already reserved for this date");
         }
         
         // Always set employee name from the authenticated user's full name (first + last name)
-        String employeeName = userService.getFullName(token);
+        String employeeName = userService.getFullNameDirect(token);
         
         // Create the reservation
         Reservation reservation = new Reservation();
@@ -122,10 +123,9 @@ public class ReservationService {
         reservation.setDuration(Reservation.Duration.fromValue(reservationDTO.getDuration()));
         reservation.setDesk(desk);
         
-        // Update desk status
-        desk.setStatus(Desk.DeskStatus.RESERVED);
-        
+        // Save reservation
         Reservation savedReservation = reservationRepository.save(reservation);
+        
         return convertToDTO(savedReservation);
     }
 
@@ -136,7 +136,7 @@ public class ReservationService {
         
         // Check if user is manager or the owner of the reservation
         boolean isManager = userService.isManager(token);
-        String userId = userService.getUserId(token);
+        Long userId = userService.getUserIdDirect(token);
         
         if (!isManager && !reservation.getUserId().equals(userId)) {
             throw new UnauthorizedException("You are not authorized to update this reservation");
@@ -171,12 +171,11 @@ public class ReservationService {
                 }
             }
             
-            // Update old desk status
-            reservation.getDesk().setStatus(Desk.DeskStatus.AVAILABLE);
-            
-            // Set new desk
+            // Update reservation with new desk
             reservation.setDesk(newDesk);
-            newDesk.setStatus(Desk.DeskStatus.RESERVED);
+            // No need to set old desk status as available - it's now determined by date
+            
+            // No need to set new desk status as reserved - it's now determined by date
         }
         
         // Update reservation details - always use the authenticated user's full name
@@ -195,7 +194,7 @@ public class ReservationService {
         
         // Check if user is manager or the owner of the reservation
         boolean isManager = userService.isManager(token);
-        String userId = userService.getUserId(token);
+        Long userId = userService.getUserIdDirect(token);
         
         if (!isManager && !reservation.getUserId().equals(userId)) {
             throw new UnauthorizedException("You are not authorized to delete this reservation");
@@ -203,7 +202,7 @@ public class ReservationService {
         
         // Update desk status
         Desk desk = reservation.getDesk();
-        desk.setStatus(Desk.DeskStatus.AVAILABLE);
+        // No need to set desk status as available - it's now determined by date
         
         reservationRepository.delete(reservation);
     }
@@ -216,7 +215,7 @@ public class ReservationService {
      * @return list of reservations
      */
     public List<ReservationDTO> getUserReservationsInDateRange(String startDate, String endDate, String token) {
-        String userId = userService.getUserId(token);
+        Long userId = userService.getUserIdDirect(token);
         return reservationRepository.findUserReservationsInDateRange(userId, startDate, endDate).stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());

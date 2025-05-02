@@ -40,6 +40,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/**").permitAll()
                         .requestMatchers("/api/users/validate-by-email/**").permitAll() // Allow validation endpoint
+                        .requestMatchers("/api/users/public/**").permitAll() // Allow public endpoints for service-to-service communication
                         .anyRequest().authenticated())
                 .addFilterBefore(new JwtAuthenticationFilter(jwtService), UsernamePasswordAuthenticationFilter.class);
 
