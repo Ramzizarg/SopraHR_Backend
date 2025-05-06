@@ -65,20 +65,11 @@ public class ReservationService {
     }
 
     public List<ReservationDTO> getReservationsByDate(String date, String token) {
-        // Get reservations by date if manager, otherwise only get the user's reservations
-        boolean isManager = userService.isManager(token);
-        Long userId = userService.getUserIdDirect(token);
-        
-        if (isManager) {
-            return reservationRepository.findByBookingDate(date).stream()
-                    .map(this::convertToDTO)
-                    .collect(Collectors.toList());
-        } else {
-            return reservationRepository.findByBookingDate(date).stream()
-                    .filter(r -> r.getUserId().equals(userId))
-                    .map(this::convertToDTO)
-                    .collect(Collectors.toList());
-        }
+        // Always return all reservations for a date to everyone, so desks show as reserved for all users
+        // This is needed so regular users can see which desks are already reserved
+        return reservationRepository.findByBookingDate(date).stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
     }
 
     public List<ReservationDTO> getUserReservations(String token) {
@@ -93,8 +84,13 @@ public class ReservationService {
         // Validate booking date
         validateBookingDate(reservationDTO.getBookingDate());
         
-        // Get user ID
+        // Get user ID and role information
         Long userId = userService.getUserIdDirect(token);
+        boolean isManager = userService.isManager(token);
+        
+        // Log reservation attempt for debugging
+        System.out.println("Reservation attempt by userId: " + userId + ", isManager: " + isManager + ", for desk: " + 
+            reservationDTO.getDeskId() + ", date: " + reservationDTO.getBookingDate());
         
         // Check if user already has a reservation for this date
         List<Reservation> existingReservations = reservationRepository.findByUserIdAndBookingDate(userId, reservationDTO.getBookingDate());
@@ -106,9 +102,13 @@ public class ReservationService {
         Desk desk = deskRepository.findById(reservationDTO.getDeskId())
                 .orElseThrow(() -> new ResourceNotFoundException("Desk", "id", reservationDTO.getDeskId()));
         
-        // Check if desk is available
+        // Check if desk is available for the requested date
         List<Reservation> existingReservationsForDesk = reservationRepository.findReservationsByDeskAndDate(desk.getId(), reservationDTO.getBookingDate());
         if (!existingReservationsForDesk.isEmpty()) {
+            // Log conflicting reservation details
+            Reservation conflicting = existingReservationsForDesk.get(0);
+            System.out.println("Desk unavailable - conflicting reservation: deskId=" + conflicting.getDesk().getId() + 
+                ", date=" + conflicting.getBookingDate() + ", by user=" + conflicting.getUserId());
             throw new BadRequestException("Desk is already reserved for this date");
         }
         
@@ -125,6 +125,8 @@ public class ReservationService {
         
         // Save reservation
         Reservation savedReservation = reservationRepository.save(reservation);
+        System.out.println("Successfully created reservation: id=" + savedReservation.getId() + ", deskId=" + 
+            savedReservation.getDesk().getId() + ", date=" + savedReservation.getBookingDate());
         
         return convertToDTO(savedReservation);
     }
