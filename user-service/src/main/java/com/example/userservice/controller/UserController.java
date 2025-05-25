@@ -12,6 +12,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -138,6 +139,20 @@ public class UserController {
                     return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User " + id);
                 });
     }
+    
+    /**
+     * Public endpoint to get a user's team
+     * For service-to-service communication
+     */
+    @GetMapping("/public/{id}/team")
+    public ResponseEntity<String> getPublicUserTeam(@PathVariable Long id) {
+        return userService.getUserById(id)
+                .map(user -> {
+                    String team = user.getTeam() != null ? user.getTeam().name() : "Unknown Team";
+                    return ResponseEntity.ok(team);
+                })
+                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body("Unknown Team"));
+    }
 
     @GetMapping("/validate-by-email/{email}")
     public ResponseEntity<Map<String, Object>> validateByEmail(@PathVariable String email) {
@@ -156,7 +171,8 @@ public class UserController {
                 });
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    // Made publicly accessible for service-to-service communication
+    // Previously restricted to admin only
     @GetMapping
     public ResponseEntity<List<UserResponse>> getAllUsers() {
         List<UserResponse> users = userService.getAllUsers().stream()
@@ -171,6 +187,42 @@ public class UserController {
                 .collect(Collectors.toList());
         logger.info("Retrieved {} users", users.size());
         return ResponseEntity.ok(users);
+    }
+    
+    /**
+     * Get all users in a specific team
+     * This is an important endpoint for the planning service to retrieve team members
+     * Intentionally public for service-to-service communication
+     * 
+     * @param teamName The name of the team (e.g., "DEV", "QA") - case insensitive
+     * @return List of users in the team
+     */
+    @GetMapping("/team/{teamName}")
+    public ResponseEntity<List<Map<String, Object>>> getUsersByTeam(@PathVariable String teamName) {
+        String normalizedTeamName = teamName.toUpperCase();
+        logger.info("Retrieving users for team: {} (normalized to {})", teamName, normalizedTeamName);
+        
+        try {
+            List<Map<String, Object>> teamMembers = userService.getUsersByTeam(normalizedTeamName).stream()
+                    .map(user -> {
+                        Map<String, Object> member = new HashMap<>();
+                        member.put("id", user.getId());
+                        member.put("firstName", user.getFirstName());
+                        member.put("lastName", user.getLastName());
+                        member.put("employeeName", user.getFirstName() + " " + user.getLastName());
+                        member.put("email", user.getEmail());
+                        member.put("team", user.getTeam().name());
+                        member.put("role", user.getRole().name()); // Add role information
+                        return member;
+                    })
+                    .collect(Collectors.toList());
+            
+            logger.info("Found {} users in team {}", teamMembers.size(), normalizedTeamName);
+            return ResponseEntity.ok(teamMembers);
+        } catch (Exception e) {
+            logger.error("Error retrieving users for team {}: {}", normalizedTeamName, e.getMessage());
+            return ResponseEntity.ok(new ArrayList<>()); // Return empty list on error rather than error response
+        }
     }
 
     @PutMapping("/{id}")

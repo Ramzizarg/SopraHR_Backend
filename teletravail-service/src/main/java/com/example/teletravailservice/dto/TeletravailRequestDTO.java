@@ -19,4 +19,14 @@ public class TeletravailRequestDTO {
     private String selectedGouvernorat;
 
     private String reason;
+    
+    // These fields are set by the service based on user information
+    // Team name (e.g., "DEV", "QA", etc.)
+    private String team;
+    
+    private Long teamLeaderId;
+    
+    // For status updates and rejections
+    private String status;
+    private String rejectionReason;
 }

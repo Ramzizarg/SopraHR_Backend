@@ -2,7 +2,6 @@ package com.example.teletravailservice.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
-
 import java.time.LocalDateTime;
 
 @Entity
@@ -13,6 +12,14 @@ public class TeletravailRequest {
     private Long id;
 
     private Long userId;
+    
+    // Employee name (firstName + lastName)
+    private String employeeName;
+    
+    // Team name (e.g., "DEV", "QA", etc.)
+    private String team;
+    
+    private Long teamLeaderId;
 
     private String travailType;
 
@@ -25,6 +32,13 @@ public class TeletravailRequest {
     private String selectedGouvernorat;
 
     private String reason;
+    
+    @Enumerated(EnumType.STRING)
+    private TeletravailStatus status = TeletravailStatus.PENDING;
+    
+    private String rejectionReason;
+    
+    private LocalDateTime statusUpdatedAt;
 
     @Column(updatable = false)
     private LocalDateTime createdAt;
@@ -32,5 +46,11 @@ public class TeletravailRequest {
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
+    }
+    
+    public enum TeletravailStatus {
+        PENDING,    // Awaiting team leader approval
+        APPROVED,   // Approved by team leader
+        REJECTED    // Rejected by team leader
     }
 }

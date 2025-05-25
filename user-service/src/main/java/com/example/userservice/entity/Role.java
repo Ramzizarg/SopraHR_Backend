@@ -1,7 +1,7 @@
 package com.example.userservice.entity;
 
 public enum Role {
-    EMPLOYEE, MANAGER, ADMIN;
+    EMPLOYEE, TEAM_LEADER, MANAGER, ADMIN;
 
     public static Role fromString(String role) {
         if (role == null || role.trim().isEmpty()) {

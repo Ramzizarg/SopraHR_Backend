@@ -114,6 +114,29 @@ public class UserService {
         return users;
     }
 
+    /**
+     * Get all users belonging to a specific team
+     *
+     * @param teamName String representation of team ("DEV", "QA", etc.)
+     * @return List of users belonging to the specified team
+     */
+    public List<User> getUsersByTeam(String teamName) {
+        if (teamName == null || teamName.trim().isEmpty()) {
+            logger.warn("Attempt to get users with null or empty team name");
+            return List.of(); // Return empty list for invalid input
+        }
+
+        try {
+            Team team = Team.fromString(teamName.trim());
+            List<User> teamMembers = userRepository.findByTeam(team);
+            logger.debug("Retrieved {} users for team {}", teamMembers.size(), teamName);
+            return teamMembers;
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid team name provided: {}", teamName);
+            return List.of(); // Return empty list for invalid team name
+        }
+    }
+
     public Optional<User> updateUser(Long id, String email, String password, String role,
                                      String firstName, String lastName, String team) {
         if (id == null) {
@@ -182,7 +205,6 @@ public class UserService {
         logger.info("User deleted successfully: ID {}", id);
         return true;
     }
-
     public Optional<User> authenticate(String email, String password) {
         if (email == null || email.trim().isEmpty() || password == null || password.isEmpty()) {
             throw new IllegalArgumentException("Email and password must not be empty");

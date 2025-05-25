@@ -31,4 +31,6 @@ public class User {
 
     private String resetToken;
     private LocalDateTime tokenExpiry;
+    
+    private String profilePhotoUrl;
 }
