@@ -452,7 +452,8 @@ public class TeletravailController {
      */
     private boolean isManager(String email) {
         try {
-            return userClient.hasRole(email, "ROLE_MANAGER");
+            return userClient.hasRole(email, "MANAGER") || 
+                   userClient.hasRole(email, "ROLE_MANAGER");
         } catch (Exception e) {
             log.warn("Failed to check manager role for {}: {}", email, e.getMessage());
             return false;
@@ -467,7 +468,9 @@ public class TeletravailController {
         
         Object roles = userDetails.get("roles");
         if (roles instanceof List) {
-            return ((List<?>) roles).contains("ROLE_MANAGER");
+            List<?> rolesList = (List<?>) roles;
+            return rolesList.contains("MANAGER") || 
+                   rolesList.contains("ROLE_MANAGER");
         }
         return false;
     }
@@ -481,10 +484,8 @@ public class TeletravailController {
         Object roles = userDetails.get("roles");
         if (roles instanceof List) {
             List<?> rolesList = (List<?>) roles;
-            return rolesList.contains("ROLE_TEAM_LEADER") || 
-                   rolesList.contains("TEAM_LEADER") ||
-                   rolesList.contains("ROLE_TEAMLEADER") ||
-                   rolesList.contains("TEAMLEADER");
+            return rolesList.contains("TEAM_LEADER") || 
+                   rolesList.contains("ROLE_TEAM_LEADER");
         }
         return false;
     }
@@ -494,7 +495,8 @@ public class TeletravailController {
      */
     private boolean isTeamLeader(String email) {
         try {
-            return userClient.isTeamLeader(email);
+            return userClient.hasRole(email, "TEAM_LEADER") || 
+                   userClient.hasRole(email, "ROLE_TEAM_LEADER");
         } catch (Exception e) {
             log.warn("Failed to check team leader role for {}: {}", email, e.getMessage());
             return false;
@@ -727,4 +729,19 @@ public class TeletravailController {
     }
     
     // Employee name admin endpoint removed per request
+
+    @DeleteMapping("/{id}/cancel")
+    public ResponseEntity<TeletravailRequest> cancelRequest(
+            @PathVariable Long id,
+            @AuthenticationPrincipal String email) {
+        try {
+            Long userId = userClient.validateUserByEmail(email);
+            TeletravailRequest request = teletravailService.cancelRequest(id, userId);
+            return ResponseEntity.ok(request);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
 }

@@ -17,9 +17,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
+import java.time.DayOfWeek;
 // RequestContextHolder and ServletRequestAttributes imports removed - no longer needed
 
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.time.LocalDateTime;
 import java.time.temporal.WeekFields;
 import java.util.Collections;
@@ -48,8 +51,7 @@ public class TeletravailService {
             UserClient userClient) {
         this.repository = repository;
         this.restTemplate = restTemplate;
-        this.userClient = userClient;
-    }
+        this.userClient = userClient;    }
 
     @CircuitBreaker(name = "userService", fallbackMethod = "userServiceFallback")
     public TeletravailRequest saveRequest(TeletravailRequestDTO dto, String email, String employeeName) {
@@ -88,45 +90,209 @@ public class TeletravailService {
             throw e;
         }
 
-        LocalDate requestDate = LocalDate.parse(dto.getTeletravailDate());
-        WeekFields weekFields = WeekFields.of(Locale.getDefault());
-        int requestWeek = requestDate.get(weekFields.weekOfWeekBasedYear());
-        int requestYear = requestDate.get(weekFields.weekBasedYear());
-
-        List<TeletravailRequest> existingRequests = repository.findByUserIdAndWeek(userId, requestYear, requestWeek);
-
-        if (existingRequests.size() >= MAX_DAYS_PER_WEEK) {
-            log.warn("User {} exceeded max days limit for week {}-{}", email, requestYear, requestWeek);
-            throw new IllegalArgumentException("Vous avez déjà soumis des demandes pour 2 jours cette semaine.");
-        }
-
-        if (existingRequests.stream().anyMatch(r -> LocalDate.parse(r.getTeletravailDate()).equals(requestDate))) {
-            log.warn("User {} attempted duplicate request for date {}", email, requestDate);
-            throw new IllegalArgumentException("Vous avez déjà une demande pour ce jour.");
-        }
-
-        for (TeletravailRequest req : existingRequests) {
-            LocalDate existingDate = LocalDate.parse(req.getTeletravailDate());
-            long dayDifference = Math.abs(existingDate.toEpochDay() - requestDate.toEpochDay());
-            if (dayDifference == 1) {
-                log.warn("User {} attempted consecutive days: {} and {}", email, existingDate, requestDate);
-                throw new IllegalArgumentException("Les jours de télétravail ne doivent pas être consécutifs.");
+        // Check if this is an exceptional request with multiple dates
+        if ("exceptionnelle".equals(dto.getTravailType()) && dto.getTeletravailDate() != null && dto.getTeletravailDate().contains(",")) {
+            try {
+                // For exceptional requests with multiple dates, process each date separately
+                log.info("Processing exceptional request with multiple dates: {}", dto.getTeletravailDate());
+                String[] dates = dto.getTeletravailDate().split(",");
+                
+                // Ensure we actually have dates after splitting
+                List<String> validDates = new ArrayList<>();
+                for (String date : dates) {
+                    if (date != null && !date.trim().isEmpty()) {
+                        validDates.add(date.trim());
+                    }
+                }
+                
+                if (validDates.isEmpty()) {
+                    log.error("No valid dates found in: {}", dto.getTeletravailDate());
+                    throw new IllegalArgumentException("Aucune date valide n'a été fournie.");
+                }
+                
+                // Convert to array for backward compatibility with existing code
+                dates = validDates.toArray(new String[0]);
+                
+                log.info("Found {} dates to process", dates.length);
+                
+                // Validate each date
+                for (String date : dates) {
+                    if (date == null || date.trim().isEmpty()) {
+                        log.warn("Skipping empty date in multi-date request");
+                        continue;
+                    }
+                    log.info("Validating date: {}", date.trim());
+                    validateSingleDate(date.trim(), userId, email, dto);
+                }
+                
+                // Create and save a request for the first date
+                String firstDate = dates[0];
+                // No need to trim again as we've already cleaned the dates
+                TeletravailRequestDTO firstDto = new TeletravailRequestDTO();
+                // Copy all properties from the original DTO
+                firstDto.setTravailType(dto.getTravailType());
+                firstDto.setTeletravailDate(firstDate);
+                firstDto.setTravailMaison(dto.getTravailMaison());
+                firstDto.setSelectedPays(dto.getSelectedPays());
+                firstDto.setSelectedGouvernorat(dto.getSelectedGouvernorat());
+                firstDto.setReason(dto.getReason());
+                firstDto.setTeam(dto.getTeam());
+                firstDto.setTeamLeaderId(dto.getTeamLeaderId());
+                
+                log.info("Creating TeletravailRequest from DTO with team: {} for first date: {}", firstDto.getTeam(), firstDate);
+                TeletravailRequest firstRequest = createFromDTO(firstDto, userId, employeeName);
+                firstRequest.setStatus(TeletravailRequest.TeletravailStatus.PENDING);
+                TeletravailRequest savedFirstRequest = repository.save(firstRequest);
+                log.info("Saved first request to database with ID: {} and team: {}", savedFirstRequest.getId(), savedFirstRequest.getTeam());
+                
+                // Create and save requests for additional dates
+                for (int i = 1; i < dates.length; i++) {
+                    String additionalDate = dates[i];
+                    // No need to check for empty strings as we've already filtered them
+                    
+                    TeletravailRequestDTO additionalDto = new TeletravailRequestDTO();
+                    // Copy all properties from the original DTO
+                    additionalDto.setTravailType(dto.getTravailType());
+                    additionalDto.setTeletravailDate(additionalDate);
+                    additionalDto.setTravailMaison(dto.getTravailMaison());
+                    additionalDto.setSelectedPays(dto.getSelectedPays());
+                    additionalDto.setSelectedGouvernorat(dto.getSelectedGouvernorat());
+                    additionalDto.setReason(dto.getReason());
+                    additionalDto.setTeam(dto.getTeam());
+                    additionalDto.setTeamLeaderId(dto.getTeamLeaderId());
+                    
+                    log.info("Creating additional TeletravailRequest for date: {}", additionalDate);
+                    TeletravailRequest additionalRequest = createFromDTO(additionalDto, userId, employeeName);
+                    additionalRequest.setStatus(TeletravailRequest.TeletravailStatus.PENDING);
+                    repository.save(additionalRequest);
+                    log.info("Saved additional request for date: {}", additionalDate);
+                }
+                
+                log.info("Processed all {} dates for exceptional telework request", dates.length);
+                return savedFirstRequest; // Return the first saved request
+            } catch (IllegalArgumentException e) {
+                log.error("Validation error in multi-date request: {}", e.getMessage());
+                throw e;
+            } catch (Exception e) {
+                log.error("Unexpected error processing multi-date request: {}", e.getMessage(), e);
+                // Print the full stack trace for better debugging
+                e.printStackTrace();
+                throw new IllegalArgumentException("Erreur lors du traitement de la demande multi-date: " + e.getMessage());
             }
+        } else {
+            // For regular requests or exceptional requests with a single date
+            validateSingleDate(dto.getTeletravailDate(), userId, email, dto);
+            
+            log.info("Creating TeletravailRequest from DTO with team: {}", dto.getTeam());
+            TeletravailRequest request = createFromDTO(dto, userId, employeeName);
+            log.info("Created request with team: {} and employee name: {}", request.getTeam(), request.getEmployeeName());
+            
+            request.setStatus(TeletravailRequest.TeletravailStatus.PENDING);
+            TeletravailRequest savedRequest = repository.save(request);
+            log.info("Saved request to database with ID: {} and team: {}", savedRequest.getId(), savedRequest.getTeam());
+            log.info("Teletravail request saved successfully for user {}: ID {}", email, savedRequest.getId());
+            
+            // Planning service update code removed - functionality consolidated
+            log.info("Teletravail request saved with ID: {} - planning service update not needed (functionality consolidated)", savedRequest.getId());
+            
+            return savedRequest;
         }
+    }
+    
+    /**
+     * Validates a single date for a telework request
+     * @param dateStr The date string to validate
+     * @param userId The user ID
+     * @param email The user email
+     * @param dto The TeletravailRequestDTO
+     * @throws IllegalArgumentException if the date is invalid
+     */
+    private void validateSingleDate(String dateStr, Long userId, String email, TeletravailRequestDTO dto) {
+        try {
+            if (dateStr == null || dateStr.trim().isEmpty()) {
+                log.error("Date string is null or empty");
+                throw new IllegalArgumentException("La date ne peut pas être vide.");
+            }
+            
+            log.info("Validating date: '{}'", dateStr);
+            LocalDate requestDate;
+            try {
+                // Make sure we handle common date formats
+                String trimmedDate = dateStr.trim();
+                // Check if the date format might be yyyy-MM-dd
+                if (trimmedDate.matches("\\d{4}-\\d{2}-\\d{2}")) {
+                    requestDate = LocalDate.parse(trimmedDate);
+                    log.debug("Successfully parsed ISO date format: {}", trimmedDate);
+                } else {
+                    // Try with DateTimeFormatter if standard ISO format fails
+                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+                    requestDate = LocalDate.parse(trimmedDate, formatter);
+                    log.debug("Successfully parsed date with formatter: {}", trimmedDate);
+                }
+            } catch (Exception e) {
+                log.error("Failed to parse date: '{}'. Error: {}", dateStr, e.getMessage());
+                throw new IllegalArgumentException("Format de date invalide: " + dateStr);
+            }
+            
+            // Validate that the date is not a weekend
+            DayOfWeek dayOfWeek = requestDate.getDayOfWeek();
+            if (dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY) {
+                log.warn("User {} attempted to select a weekend day: {}", email, requestDate);
+                throw new IllegalArgumentException("Les jours de weekend ne sont pas autorisés pour le télétravail.");
+            }
+            
+            WeekFields weekFields = WeekFields.of(Locale.getDefault());
+            int requestWeek = requestDate.get(weekFields.weekOfWeekBasedYear());
+            int requestYear = requestDate.get(weekFields.weekBasedYear());
 
-        log.info("Creating TeletravailRequest from DTO with team: {}", dto.getTeam());
-        TeletravailRequest request = createFromDTO(dto, userId, employeeName);
-        log.info("Created request with team: {} and employee name: {}", request.getTeam(), request.getEmployeeName());
-        
-        request.setStatus(TeletravailRequest.TeletravailStatus.PENDING);
-        TeletravailRequest savedRequest = repository.save(request);
-        log.info("Saved request to database with ID: {} and team: {}", savedRequest.getId(), savedRequest.getTeam());
-        log.info("Teletravail request saved successfully for user {}: ID {}", email, savedRequest.getId());
-        
-        // Planning service update code removed - functionality consolidated
-        log.info("Teletravail request saved with ID: {} - planning service update not needed (functionality consolidated)", savedRequest.getId());
-        
-        return savedRequest;
+            List<TeletravailRequest> existingRequests = repository.findByUserIdAndWeek(userId, requestYear, requestWeek);
+
+            // Check for existing requests on the same date
+            if (existingRequests.stream().anyMatch(r -> {
+                try {
+                    return LocalDate.parse(r.getTeletravailDate()).equals(requestDate);
+                } catch (Exception e) {
+                    log.error("Error parsing date from existing request: {}", r.getTeletravailDate(), e);
+                    return false;
+                }
+            })) {
+                log.warn("User {} attempted duplicate request for date {}", email, requestDate);
+                throw new IllegalArgumentException("Vous avez déjà une demande pour ce jour.");
+            }
+
+            // Check for consecutive days
+            for (TeletravailRequest req : existingRequests) {
+                try {
+                    LocalDate existingDate = LocalDate.parse(req.getTeletravailDate());
+                    long dayDifference = Math.abs(existingDate.toEpochDay() - requestDate.toEpochDay());
+                    if (dayDifference == 1) {
+                        log.warn("User {} attempted consecutive days: {} and {}", email, existingDate, requestDate);
+                        throw new IllegalArgumentException("Les jours de télétravail ne doivent pas être consécutifs.");
+                    }
+                } catch (Exception e) {
+                    log.error("Error comparing dates for consecutive day check: {} and {}", req.getTeletravailDate(), dateStr, e);
+                }
+            }
+
+            // Only check the 2-day limit for regular telework requests
+            if ("reguliere".equalsIgnoreCase(dto.getTravailType())) {
+                long regularRequestsCount = existingRequests.stream()
+                    .filter(r -> "reguliere".equalsIgnoreCase(r.getTravailType()))
+                    .count();
+                
+                if (regularRequestsCount >= MAX_DAYS_PER_WEEK) {
+                    log.warn("User {} exceeded max regular days limit for week {}-{}", email, requestYear, requestWeek);
+                    throw new IllegalArgumentException("Vous avez déjà soumis des demandes pour 2 jours réguliers cette semaine.");
+                }
+            }
+            
+            log.info("Date validation successful for: {}", dateStr);
+        } catch (IllegalArgumentException e) {
+            throw e; // Rethrow the same exception
+        } catch (Exception e) {
+            log.error("Unexpected error validating date: '{}'", dateStr, e);
+            throw new IllegalArgumentException("Erreur lors de la validation de la date: " + e.getMessage());
+        }
     }
     
     /**
@@ -714,4 +880,26 @@ public class TeletravailService {
     }
     
     // Employee name batch update functionality removed per request
+
+    public TeletravailRequest cancelRequest(Long id, Long userId) {
+        TeletravailRequest request = repository.findById(id)
+            .orElseThrow(() -> new IllegalArgumentException("Teletravail request not found with id: " + id));
+            
+        // Check if the user is the owner of the request
+        if (!request.getUserId().equals(userId)) {
+            throw new IllegalArgumentException("You can only cancel your own requests");
+        }
+            
+        // Check if the request date is in the future
+        LocalDate requestDate = LocalDate.parse(request.getTeletravailDate());
+        LocalDate today = LocalDate.now();
+        
+        if (!requestDate.isAfter(today)) {
+            throw new IllegalArgumentException("Cannot cancel a request for today or a past date");
+        }
+        
+        // Delete the request
+        repository.delete(request);
+        return request;
+    }
 }

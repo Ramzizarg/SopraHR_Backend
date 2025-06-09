@@ -22,6 +22,10 @@ public class SecurityConfig {
     @Value("${jwt.secret}")
     private String jwtSecret;
 
+    public SecurityConfig() {
+        super();
+    }
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http

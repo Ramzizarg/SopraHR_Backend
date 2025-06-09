@@ -14,12 +14,15 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import javax.crypto.SecretKey;
 import java.io.IOException;
-import java.util.Collections;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
 
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final Logger logger = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
@@ -59,11 +62,28 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 return;
             }
 
-            // Set authentication in SecurityContextHolder
+            // Extract roles from token
+            List<String> roles = new ArrayList<>();
+            if (claims.containsKey("role")) {
+                String role = claims.get("role", String.class);
+                if (role != null) {
+                    // Add both formats of the role
+                    roles.add(role);
+                    if (!role.startsWith("ROLE_")) {
+                        roles.add("ROLE_" + role);
+                    }
+                }
+            }
+
+            // Set authentication in SecurityContextHolder with roles
+            List<SimpleGrantedAuthority> authorities = roles.stream()
+                    .map(SimpleGrantedAuthority::new)
+                    .collect(Collectors.toList());
+            
             UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
-                    email, null, Collections.emptyList());
+                    email, null, authorities);
             SecurityContextHolder.getContext().setAuthentication(auth);
-            logger.debug("Authenticated user: {}", email);
+            logger.debug("Authenticated user: {} with roles: {}", email, roles);
 
             chain.doFilter(request, response);
         } catch (ExpiredJwtException e) {

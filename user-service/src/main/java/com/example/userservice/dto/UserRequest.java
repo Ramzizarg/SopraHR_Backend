@@ -8,7 +8,7 @@ public record UserRequest(
         @NotBlank(message = "Email is required")
         @Email(message = "Invalid email format")
         String email,
-        @NotBlank(message = "Password is required")
+        // Password is required for new users but optional for updates
         @Size(min = 8, message = "Password must be at least 8 characters")
         String password,
         @NotBlank(message = "Role is required")
