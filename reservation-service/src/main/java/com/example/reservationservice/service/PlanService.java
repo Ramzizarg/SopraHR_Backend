@@ -56,9 +56,9 @@ public class PlanService {
 
     @Transactional
     public PlanDTO createPlan(PlanDTO planDTO, String token) {
-        // Check if user is a manager
-        if (!userService.isManager(token)) {
-            throw new UnauthorizedException("Only managers can create plans");
+        // Check if user is an admin
+        if (!userService.isAdmin(token)) {
+            throw new UnauthorizedException("Only admins can create plans");
         }
         
         // Check if a plan already exists
@@ -80,9 +80,9 @@ public class PlanService {
 
     @Transactional
     public PlanDTO updatePlan(Long id, PlanDTO planDTO, String token) {
-        // Check if user is a manager
-        if (!userService.isManager(token)) {
-            throw new UnauthorizedException("Only managers can update plans");
+        // Check if user is an admin
+        if (!userService.isAdmin(token)) {
+            throw new UnauthorizedException("Only admins can update plans");
         }
 
         Plan plan = planRepository.findById(id)
@@ -99,9 +99,9 @@ public class PlanService {
 
     @Transactional
     public void deletePlan(Long id, String token) {
-        // Check if user is a manager
-        if (!userService.isManager(token)) {
-            throw new UnauthorizedException("Only managers can delete plans");
+        // Check if user is an admin
+        if (!userService.isAdmin(token)) {
+            throw new UnauthorizedException("Only admins can delete plans");
         }
 
         Plan plan = planRepository.findById(id)
@@ -112,9 +112,9 @@ public class PlanService {
 
     @Transactional
     public PlanDTO updateFullPlan(Long id, PlanDTO planDTO, String token) {
-        // Check if user is a manager
-        if (!userService.isManager(token)) {
-            throw new UnauthorizedException("Only managers can update plans");
+        // Check if user is an admin
+        if (!userService.isAdmin(token)) {
+            throw new UnauthorizedException("Only admins can update plans");
         }
 
         Plan plan = planRepository.findById(id)

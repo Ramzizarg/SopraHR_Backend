@@ -228,20 +228,40 @@ public class TeletravailController {
         }
 
         try {
-            // Verify manager role - this would typically be done by Spring Security
-            // but we're explicitly checking here for additional security
-            if (!isManager(email)) {
-                log.warn("User {} attempted to access manager-only endpoint", email);
+            // Get authentication context to check roles directly
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            log.info("User {} attempting to access admin endpoint. Authorities: {}", 
+                    email, auth != null ? auth.getAuthorities() : "none");
+            
+            // Check for admin role in both formats
+            boolean isAdmin = auth != null && auth.getAuthorities().stream()
+                    .anyMatch(a -> {
+                        String authority = a.getAuthority();
+                        log.debug("Checking authority: {}", authority);
+                        return authority.equals("ADMIN") || 
+                               authority.equals("ROLE_ADMIN") ||
+                               authority.equals("ROLE_MANAGER") ||
+                               authority.equals("MANAGER");
+                    });
+            
+            if (!isAdmin) {
+                log.warn("User {} attempted to access admin-only endpoint. Authorities: {}", 
+                        email, auth != null ? auth.getAuthorities() : "none");
                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                        .body(new ErrorResponse("Access denied", "Manager role required"));
+                        .body(new ErrorResponse("Access denied", "Admin or Manager role required"));
             }
             
-            List<TeletravailResponseDTO> requests = teletravailService.getAllRequests().stream()
-                    .map(this::enrichRequestWithUserDetails)
+            List<TeletravailRequest> requests = teletravailService.getAllRequests();
+            List<TeletravailResponseDTO> responseDTOs = requests.stream()
+                    .map(request -> {
+                        TeletravailResponseDTO dto = new TeletravailResponseDTO(request);
+                        // Enrich with user details if needed
+                        return dto;
+                    })
                     .collect(Collectors.toList());
             
-            log.info("Returning {} requests for manager {}", requests.size(), email);
-            return ResponseEntity.ok(requests);
+            log.info("Returning {} requests for admin/manager {}", responseDTOs.size(), email);
+            return ResponseEntity.ok(responseDTOs);
         } catch (Exception e) {
             log.error("Server error fetching all requests: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

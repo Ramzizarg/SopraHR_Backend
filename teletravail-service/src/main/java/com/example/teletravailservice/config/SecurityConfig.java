@@ -34,7 +34,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/teletravail/countries", "/api/teletravail/regions/**", "/actuator/**").permitAll()
-                        .requestMatchers("/api/teletravail/user/**").permitAll() // Allow inter-service communication
+                        .requestMatchers("/api/teletravail/user/**").permitAll()
                         .requestMatchers("/api/teletravail/**").authenticated()
                         .anyRequest().authenticated()
                 )

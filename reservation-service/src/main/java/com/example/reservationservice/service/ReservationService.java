@@ -34,11 +34,11 @@ public class ReservationService {
     }
 
     public List<ReservationDTO> getAllReservations(String token) {
-        // Get all reservations if manager, otherwise only get the user's reservations
-        boolean isManager = userService.isManager(token);
+        // Get all reservations if admin, otherwise only get the user's reservations
+        boolean isAdmin = userService.isAdmin(token);
         Long userId = userService.getUserIdDirect(token);
         
-        if (isManager) {
+        if (isAdmin) {
             return reservationRepository.findAll().stream()
                     .map(this::convertToDTO)
                     .collect(Collectors.toList());
@@ -53,11 +53,11 @@ public class ReservationService {
         Reservation reservation = reservationRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Reservation", "id", id));
         
-        // Check if user is manager or the owner of the reservation
-        boolean isManager = userService.isManager(token);
+        // Check if user is admin or the owner of the reservation
+        boolean isAdmin = userService.isAdmin(token);
         Long userId = userService.getUserIdDirect(token);
         
-        if (!isManager && !reservation.getUserId().equals(userId)) {
+        if (!isAdmin && !reservation.getUserId().equals(userId)) {
             throw new UnauthorizedException("You are not authorized to view this reservation");
         }
         
@@ -86,10 +86,10 @@ public class ReservationService {
         
         // Get user ID and role information
         Long userId = userService.getUserIdDirect(token);
-        boolean isManager = userService.isManager(token);
+        boolean isAdmin = userService.isAdmin(token);
         
         // Log reservation attempt for debugging
-        System.out.println("Reservation attempt by userId: " + userId + ", isManager: " + isManager + ", for desk: " + 
+        System.out.println("Reservation attempt by userId: " + userId + ", isAdmin: " + isAdmin + ", for desk: " + 
             reservationDTO.getDeskId() + ", date: " + reservationDTO.getBookingDate());
         
         // Check if user already has a reservation for this date
@@ -136,11 +136,11 @@ public class ReservationService {
         Reservation reservation = reservationRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Reservation", "id", id));
         
-        // Check if user is manager or the owner of the reservation
-        boolean isManager = userService.isManager(token);
+        // Check if user is admin or the owner of the reservation
+        boolean isAdmin = userService.isAdmin(token);
         Long userId = userService.getUserIdDirect(token);
         
-        if (!isManager && !reservation.getUserId().equals(userId)) {
+        if (!isAdmin && !reservation.getUserId().equals(userId)) {
             throw new UnauthorizedException("You are not authorized to update this reservation");
         }
         
@@ -194,11 +194,11 @@ public class ReservationService {
         Reservation reservation = reservationRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Reservation", "id", id));
         
-        // Check if user is manager or the owner of the reservation
-        boolean isManager = userService.isManager(token);
+        // Check if user is admin or the owner of the reservation
+        boolean isAdmin = userService.isAdmin(token);
         Long userId = userService.getUserIdDirect(token);
         
-        if (!isManager && !reservation.getUserId().equals(userId)) {
+        if (!isAdmin && !reservation.getUserId().equals(userId)) {
             throw new UnauthorizedException("You are not authorized to delete this reservation");
         }
         

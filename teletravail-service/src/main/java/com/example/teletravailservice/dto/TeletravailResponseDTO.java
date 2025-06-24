@@ -43,7 +43,6 @@ public class TeletravailResponseDTO {
         }
         
         this.team = request.getTeam();
-        this.teamLeaderId = request.getTeamLeaderId();
         this.travailType = request.getTravailType();
         this.teletravailDate = request.getTeletravailDate();
         this.travailMaison = request.getTravailMaison();

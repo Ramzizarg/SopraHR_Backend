@@ -26,26 +26,27 @@ public class UserService {
 
     @Autowired
     public UserService(RestTemplate restTemplate) {
+        super();
         this.restTemplate = restTemplate;
     }
 
     /**
-     * Verify if the user has the MANAGER role
+     * Verify if the user has the ADMIN role
      * @param token the JWT token
-     * @return true if the user has the MANAGER role
+     * @return true if the user has the ADMIN role
      */
-    public boolean isManager(String token) {
+    public boolean isAdmin(String token) {
         // First, examine the token directly - most reliable approach
         try {
-            // Quick check for MANAGER role directly in the token
+            // Quick check for ADMIN role directly in the token
             String[] parts = token.split("\\.");
             if (parts.length == 3) {
                 String payload = new String(java.util.Base64.getDecoder().decode(parts[1]));
                 System.out.println("JWT payload: " + payload);
                 
-                // If we can see the MANAGER role directly in the token, authorize immediately
-                if (payload.contains("\"role\":\"MANAGER\"")) {
-                    System.out.println("MANAGER role found directly in token");
+                // If we can see the ADMIN role directly in the token, authorize immediately
+                if (payload.contains("\"role\":\"ADMIN\"")) {
+                    System.out.println("ADMIN role found directly in token");
                     return true;
                 }
             }
@@ -63,7 +64,7 @@ public class UserService {
             // Debug token and header info
             System.out.println("Token used: " + token);
             System.out.println("Auth header: " + headers.get("Authorization"));
-            System.out.println("Checking if user is a manager with URL: " + authServiceUrl + "/me");
+            System.out.println("Checking if user is an admin with URL: " + authServiceUrl + "/me");
             
             try {
                 ResponseEntity<Map> response = restTemplate.exchange(
@@ -81,9 +82,9 @@ public class UserService {
                     if (user.containsKey("role")) {
                         String role = (String) user.get("role");
                         System.out.println("Role from user service: '" + role + "'");
-                        boolean isManager = "MANAGER".equalsIgnoreCase(role);
-                        System.out.println("Is manager: " + isManager);
-                        return isManager;
+                        boolean isAdmin = "ADMIN".equalsIgnoreCase(role);
+                        System.out.println("Is admin: " + isAdmin);
+                        return isAdmin;
                     } else {
                         System.out.println("Role key not found in response");
                     }
@@ -97,17 +98,17 @@ public class UserService {
                 
                 // Fallback direct call using different approach
                 System.out.println("Trying fallback approach...");
-                return checkManagerDirectly(token);
+                return checkAdminDirectly(token);
             }
         } catch (Exception e) {
-            System.err.println("Error checking manager role: " + e.getMessage());
+            System.err.println("Error checking admin role: " + e.getMessage());
             e.printStackTrace();
             return false;
         }
     }
     
     // Fallback method using direct URL connection
-    private boolean checkManagerDirectly(String token) {
+    private boolean checkAdminDirectly(String token) {
         try {
             java.net.URL url = new java.net.URL(authServiceUrl + "/me");
             java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
@@ -122,8 +123,8 @@ public class UserService {
                 scanner.close();
                 System.out.println("Fallback response: " + responseBody);
                 
-                // Simple check for MANAGER in response
-                return responseBody.contains("\"role\":\"MANAGER\"");
+                // Simple check for ADMIN in response
+                return responseBody.contains("\"role\":\"ADMIN\"");
             }
             return false;
         } catch (Exception e) {

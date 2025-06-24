@@ -1,18 +1,29 @@
 package com.example.analyticsservice.controller;
 
-import com.example.analyticsservice.dto.AnalyticsResponse;
-import com.example.analyticsservice.service.AnalyticsService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-import reactor.core.publisher.Mono;
-
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.example.analyticsservice.model.AnalyticsMetrics;
+import com.example.analyticsservice.service.AnalyticsService;
+
+import reactor.core.publisher.Mono;
 
 /**
  * REST controller for analytics endpoints
@@ -28,6 +39,7 @@ public class AnalyticsController {
 
     @Autowired
     public AnalyticsController(AnalyticsService analyticsService) {
+        super();
         this.analyticsService = analyticsService;
     }
 
@@ -37,7 +49,7 @@ public class AnalyticsController {
      * @return Dashboard metrics with data from user-service, teletravail-service, reservation-service, and planning-service
      */
     @GetMapping("/dashboard")
-    public Mono<ResponseEntity<Map<String, Object>>> getDashboardMetrics(
+    public Mono<ResponseEntity<AnalyticsMetrics>> getDashboardMetrics(
             @RequestHeader("Authorization") String authHeader) {
         // Extract token from Authorization header
         String token = extractToken(authHeader);
@@ -45,19 +57,11 @@ public class AnalyticsController {
         System.out.println("Dashboard metrics requested with token: " + (token != null && !token.isEmpty() ? "[VALID]" : "[MISSING]"));
         
         if (token == null || token.isEmpty()) {
-            return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(null));
+            return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).build());
         }
         
-        return analyticsService.getAnalytics(token)
-                .map(response -> {
-                    // Log successful analytics request
-                    Map<String, Object> data = response.getData();
-                    Map<String, Object> dashboardSummary = (Map<String, Object>) data.getOrDefault("dashboardSummary", new HashMap<>());
-                    
-                    System.out.println("Successfully retrieved analytics data from all services");
-                    return ResponseEntity.ok(data);
-                })
+        return analyticsService.getDashboardMetrics(token)
+                .map(ResponseEntity::ok)
                 .defaultIfEmpty(ResponseEntity.notFound().build())
                 .onErrorResume(e -> {
                     System.err.println("Error processing analytics data: " + e.getMessage());

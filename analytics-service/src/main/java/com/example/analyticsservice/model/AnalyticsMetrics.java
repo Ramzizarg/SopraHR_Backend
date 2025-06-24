@@ -9,22 +9,31 @@ public class AnalyticsMetrics {
     private int totalEmployees;
     private int officePresence;
     private int remoteWork;
-    private int undefinedStatus;
     private int reservationCount;
     private int occupancyRate;
+    private double employeeGrowthRate;
+    private double officePresencePercentage;
+    private double officePresenceChange;
     private List<TeamDistribution> teamDistribution;
     private List<WeeklyOccupancy> weeklyOccupancy;
     private ApprovalRates approvalRates;
-    private List<TopEmployee> topEmployees;
+    private List<Employee> allEmployees;
+
+    public AnalyticsMetrics() {
+        super();
+    }
 
     // Nested classes for specific metric categories
     public static class TeamDistribution {
         private String team;
         private int count;
 
-        public TeamDistribution() {}
+        public TeamDistribution() {
+            super();
+        }
 
         public TeamDistribution(String team, int count) {
+            super();
             this.team = team;
             this.count = count;
         }
@@ -50,9 +59,12 @@ public class AnalyticsMetrics {
         private String day;
         private int percentage;
 
-        public WeeklyOccupancy() {}
+        public WeeklyOccupancy() {
+            super();
+        }
 
         public WeeklyOccupancy(String day, int percentage) {
+            super();
             this.day = day;
             this.percentage = percentage;
         }
@@ -79,9 +91,12 @@ public class AnalyticsMetrics {
         private int rejected;
         private int pending;
 
-        public ApprovalRates() {}
+        public ApprovalRates() {
+            super();
+        }
 
         public ApprovalRates(int approved, int rejected, int pending) {
+            super();
             this.approved = approved;
             this.rejected = rejected;
             this.pending = pending;
@@ -112,33 +127,49 @@ public class AnalyticsMetrics {
         }
     }
 
-    public static class TopEmployee {
-        private String name;
-        private int days;
+    public static class Employee {
+        private Long id;
+        private String firstName;
+        private String lastName;
         private String team;
+        private String email;
 
-        public TopEmployee() {}
+        public Employee() {
+            super();
+        }
 
-        public TopEmployee(String name, int days, String team) {
-            this.name = name;
-            this.days = days;
+        public Employee(Long id, String firstName, String lastName, String team, String email) {
+            super();
+            this.id = id;
+            this.firstName = firstName;
+            this.lastName = lastName;
             this.team = team;
+            this.email = email;
         }
 
-        public String getName() {
-            return name;
+        // Getters and setters
+        public Long getId() {
+            return id;
         }
 
-        public void setName(String name) {
-            this.name = name;
+        public void setId(Long id) {
+            this.id = id;
         }
 
-        public int getDays() {
-            return days;
+        public String getFirstName() {
+            return firstName;
         }
 
-        public void setDays(int days) {
-            this.days = days;
+        public void setFirstName(String firstName) {
+            this.firstName = firstName;
+        }
+
+        public String getLastName() {
+            return lastName;
+        }
+
+        public void setLastName(String lastName) {
+            this.lastName = lastName;
         }
 
         public String getTeam() {
@@ -147,6 +178,14 @@ public class AnalyticsMetrics {
 
         public void setTeam(String team) {
             this.team = team;
+        }
+
+        public String getEmail() {
+            return email;
+        }
+
+        public void setEmail(String email) {
+            this.email = email;
         }
     }
 
@@ -175,14 +214,6 @@ public class AnalyticsMetrics {
         this.remoteWork = remoteWork;
     }
 
-    public int getUndefinedStatus() {
-        return undefinedStatus;
-    }
-
-    public void setUndefinedStatus(int undefinedStatus) {
-        this.undefinedStatus = undefinedStatus;
-    }
-
     public int getReservationCount() {
         return reservationCount;
     }
@@ -197,6 +228,30 @@ public class AnalyticsMetrics {
 
     public void setOccupancyRate(int occupancyRate) {
         this.occupancyRate = occupancyRate;
+    }
+
+    public double getEmployeeGrowthRate() {
+        return employeeGrowthRate;
+    }
+
+    public void setEmployeeGrowthRate(double employeeGrowthRate) {
+        this.employeeGrowthRate = employeeGrowthRate;
+    }
+
+    public double getOfficePresencePercentage() {
+        return officePresencePercentage;
+    }
+
+    public void setOfficePresencePercentage(double officePresencePercentage) {
+        this.officePresencePercentage = officePresencePercentage;
+    }
+
+    public double getOfficePresenceChange() {
+        return officePresenceChange;
+    }
+
+    public void setOfficePresenceChange(double officePresenceChange) {
+        this.officePresenceChange = officePresenceChange;
     }
 
     public List<TeamDistribution> getTeamDistribution() {
@@ -223,11 +278,11 @@ public class AnalyticsMetrics {
         this.approvalRates = approvalRates;
     }
 
-    public List<TopEmployee> getTopEmployees() {
-        return topEmployees;
+    public List<Employee> getAllEmployees() {
+        return allEmployees;
     }
 
-    public void setTopEmployees(List<TopEmployee> topEmployees) {
-        this.topEmployees = topEmployees;
+    public void setAllEmployees(List<Employee> allEmployees) {
+        this.allEmployees = allEmployees;
     }
 }

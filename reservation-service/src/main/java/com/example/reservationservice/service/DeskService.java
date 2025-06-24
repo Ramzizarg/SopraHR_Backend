@@ -30,6 +30,7 @@ public class DeskService {
                      PlanRepository planRepository,
                      ReservationRepository reservationRepository,
                      UserService userService) {
+        super();
         this.deskRepository = deskRepository;
         this.planRepository = planRepository;
         this.reservationRepository = reservationRepository;
@@ -59,9 +60,9 @@ public class DeskService {
 
     @Transactional
     public DeskDTO createDesk(Long planId, DeskDTO deskDTO, String token) {
-        // Check if user is a manager
-        if (!userService.isManager(token)) {
-            throw new UnauthorizedException("Only managers can create desks");
+        // Check if user is an admin
+        if (!userService.isAdmin(token)) {
+            throw new UnauthorizedException("Only admins can create desks");
         }
 
         Plan plan = planRepository.findById(planId)
@@ -79,9 +80,9 @@ public class DeskService {
 
     @Transactional
     public DeskDTO updateDesk(Long id, DeskDTO deskDTO, String token) {
-        // Check if user is a manager
-        if (!userService.isManager(token)) {
-            throw new UnauthorizedException("Only managers can update desks");
+        // Check if user is an admin
+        if (!userService.isAdmin(token)) {
+            throw new UnauthorizedException("Only admins can update desks");
         }
 
         Desk desk = deskRepository.findById(id)
@@ -97,9 +98,9 @@ public class DeskService {
 
     @Transactional
     public void deleteDesk(Long id, String token) {
-        // Check if user is a manager
-        if (!userService.isManager(token)) {
-            throw new UnauthorizedException("Only managers can delete desks");
+        // Check if user is an admin
+        if (!userService.isAdmin(token)) {
+            throw new UnauthorizedException("Only admins can delete desks");
         }
 
         Desk desk = deskRepository.findById(id)

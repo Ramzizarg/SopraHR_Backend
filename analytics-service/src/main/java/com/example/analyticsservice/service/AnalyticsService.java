@@ -1,15 +1,22 @@
 package com.example.analyticsservice.service;
 
-import com.example.analyticsservice.dto.AnalyticsResponse;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Mono;
-
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.temporal.TemporalAdjusters;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
+
+import com.example.analyticsservice.dto.AnalyticsResponse;
+import com.example.analyticsservice.model.AnalyticsMetrics;
+
+import reactor.core.publisher.Mono;
 
 /**
  * Service layer for analytics data processing
@@ -33,6 +40,7 @@ public class AnalyticsService {
     private String planningServiceUrl;
 
     public AnalyticsService(WebClient.Builder webClientBuilder) {
+        super();
         this.webClientBuilder = webClientBuilder;
     }
 
@@ -303,5 +311,107 @@ public class AnalyticsService {
                     // Return empty list on error rather than failing completely
                     return Mono.just(new ArrayList<>());
                 });
+    }
+
+    public Mono<AnalyticsMetrics> getDashboardMetrics(String token) {
+        Mono<Map> userAnalyticsFuture = fetchUserAnalytics(token);
+        Mono<Map> reservationAnalyticsFuture = fetchReservationAnalytics(token);
+        Mono<Map> teleworkAnalyticsFuture = fetchTeleworkAnalytics(token);
+        Mono<Map> planningAnalyticsFuture = fetchPlanningAnalytics(token);
+        Mono<List> usersFuture = fetchUsers(token);
+
+        return Mono.zip(
+            userAnalyticsFuture,
+            reservationAnalyticsFuture,
+            teleworkAnalyticsFuture,
+            planningAnalyticsFuture,
+            usersFuture
+        ).map(tuple -> {
+            Map<String, Object> userAnalytics = tuple.getT1();
+            Map<String, Object> reservationAnalytics = tuple.getT2();
+            Map<String, Object> teleworkAnalytics = tuple.getT3();
+            Map<String, Object> planningAnalytics = tuple.getT4();
+            List<Map<String, Object>> users = (List<Map<String, Object>>) tuple.getT5();
+
+            AnalyticsMetrics metrics = new AnalyticsMetrics();
+
+            // All Employees from user-service
+            List<AnalyticsMetrics.Employee> allEmployees = users.stream()
+                .map(u -> new AnalyticsMetrics.Employee(
+                    ((Number) u.get("id")).longValue(),
+                    (String) u.get("firstName"),
+                    (String) u.get("lastName"),
+                    (String) u.get("team"),
+                    (String) u.get("email")
+                ))
+                .collect(Collectors.toList());
+            metrics.setAllEmployees(allEmployees);
+            
+            // Total Employees from user-service
+            metrics.setTotalEmployees(allEmployees.size());
+
+            // Simulate fetching previous month's employee count to calculate growth
+            int previousEmployees = allEmployees.size() - 5; // Placeholder
+            if (previousEmployees > 0) {
+                double growth = ((double) (allEmployees.size() - previousEmployees) / previousEmployees) * 100;
+                metrics.setEmployeeGrowthRate(growth);
+            } else {
+                metrics.setEmployeeGrowthRate(100.0); // Default growth if no previous data
+            }
+
+            // Office Presence and Remote Work based on telework requests
+            int approvedTeleworkToday = ((Number) teleworkAnalytics.getOrDefault("approvedTodayCount", 0)).intValue();
+            metrics.setRemoteWork(approvedTeleworkToday);
+
+            int inOfficeToday = allEmployees.size() - approvedTeleworkToday;
+            metrics.setOfficePresence(inOfficeToday);
+
+            if (allEmployees.size() > 0) {
+                double presencePercentage = ((double) inOfficeToday / allEmployees.size()) * 100;
+                metrics.setOfficePresencePercentage(presencePercentage);
+            } else {
+                metrics.setOfficePresencePercentage(0.0);
+            }
+
+            // Simulate change from yesterday for the badge
+            int yesterdayOfficePresence = inOfficeToday > 0 ? inOfficeToday - 2 : 0; // Placeholder
+            if (yesterdayOfficePresence > 0) {
+                double change = ((double) (inOfficeToday - yesterdayOfficePresence) / yesterdayOfficePresence) * 100;
+                metrics.setOfficePresenceChange(change);
+            } else if (inOfficeToday > 0) {
+                metrics.setOfficePresenceChange(100.0);
+            } else {
+                metrics.setOfficePresenceChange(0.0);
+            }
+
+            // Reservation Count and Occupancy Rate from reservation-service
+            metrics.setReservationCount(((Number) reservationAnalytics.getOrDefault("totalReservations", 0)).intValue());
+            // Assuming occupancyRate is a percentage value (e.g., 80.5) and needs to be an int
+            metrics.setOccupancyRate(((Number) reservationAnalytics.getOrDefault("occupancyRate", 0.0)).intValue());
+
+            // Team Distribution from user-service
+            List<Map<String, Object>> teamDistData = (List<Map<String, Object>>) userAnalytics.getOrDefault("teamDistribution", new ArrayList<>());
+            List<AnalyticsMetrics.TeamDistribution> teamDist = teamDistData.stream()
+                .map(d -> new AnalyticsMetrics.TeamDistribution((String) d.get("team"), ((Number) d.get("count")).intValue()))
+                .collect(Collectors.toList());
+            metrics.setTeamDistribution(teamDist);
+
+            // Weekly Occupancy from reservation-service
+            List<Map<String, Object>> weeklyOccData = (List<Map<String, Object>>) reservationAnalytics.getOrDefault("weeklyOccupancy", new ArrayList<>());
+            List<AnalyticsMetrics.WeeklyOccupancy> weeklyOcc = weeklyOccData.stream()
+                .map(d -> new AnalyticsMetrics.WeeklyOccupancy(
+                    (String) d.get("day"),
+                    ((Number) d.get("percentage")).intValue()))
+                .collect(Collectors.toList());
+            metrics.setWeeklyOccupancy(weeklyOcc);
+
+            // Approval Rates from teletravail-service
+            int approved = ((Number) teleworkAnalytics.getOrDefault("approvedRequests", 0)).intValue();
+            int rejected = ((Number) teleworkAnalytics.getOrDefault("rejectedRequests", 0)).intValue();
+            int pending = ((Number) teleworkAnalytics.getOrDefault("pendingRequests", 0)).intValue();
+            metrics.setApprovalRates(new AnalyticsMetrics.ApprovalRates(approved, rejected, pending));
+
+            return metrics;
+        });
     }
 }

@@ -23,6 +23,7 @@ public class SecurityConfig {
     private final JwtTokenProvider jwtTokenProvider;
 
     public SecurityConfig(JwtTokenProvider jwtTokenProvider) {
+        super();
         this.jwtTokenProvider = jwtTokenProvider;
     }
 
@@ -36,17 +37,16 @@ public class SecurityConfig {
             .authorizeHttpRequests(authorize -> authorize
                 // Public endpoints
                 .requestMatchers("/actuator/**", "/api/v1/health").permitAll()
-                // Manager-only access for certain endpoints
-                .requestMatchers(HttpMethod.POST, "/api/v1/plans/**").hasAuthority("ROLE_MANAGER")
-                
-                .requestMatchers(HttpMethod.PUT, "/api/v1/plans/**").hasAuthority("ROLE_MANAGER")
-                .requestMatchers(HttpMethod.DELETE, "/api/v1/plans/**").hasAuthority("ROLE_MANAGER")
-                .requestMatchers(HttpMethod.POST, "/api/v1/desks/**").hasAuthority("ROLE_MANAGER")
-                .requestMatchers(HttpMethod.PUT, "/api/v1/desks/**").hasAuthority("ROLE_MANAGER")
-                .requestMatchers(HttpMethod.DELETE, "/api/v1/desks/**").hasAuthority("ROLE_MANAGER")
-                .requestMatchers(HttpMethod.POST, "/api/v1/walls/**").hasAuthority("ROLE_MANAGER")
-                .requestMatchers(HttpMethod.PUT, "/api/v1/walls/**").hasAuthority("ROLE_MANAGER")
-                .requestMatchers(HttpMethod.DELETE, "/api/v1/walls/**").hasAuthority("ROLE_MANAGER")
+                // Admin-only access for certain endpoints
+                .requestMatchers(HttpMethod.POST, "/api/v1/plans/**").hasAuthority("ROLE_ADMIN")
+                .requestMatchers(HttpMethod.PUT, "/api/v1/plans/**").hasAuthority("ROLE_ADMIN")
+                .requestMatchers(HttpMethod.DELETE, "/api/v1/plans/**").hasAuthority("ROLE_ADMIN")
+                .requestMatchers(HttpMethod.POST, "/api/v1/desks/**").hasAuthority("ROLE_ADMIN")
+                .requestMatchers(HttpMethod.PUT, "/api/v1/desks/**").hasAuthority("ROLE_ADMIN")
+                .requestMatchers(HttpMethod.DELETE, "/api/v1/desks/**").hasAuthority("ROLE_ADMIN")
+                .requestMatchers(HttpMethod.POST, "/api/v1/walls/**").hasAuthority("ROLE_ADMIN")
+                .requestMatchers(HttpMethod.PUT, "/api/v1/walls/**").hasAuthority("ROLE_ADMIN")
+                .requestMatchers(HttpMethod.DELETE, "/api/v1/walls/**").hasAuthority("ROLE_ADMIN")
                 // User access for reservations
                 .requestMatchers(HttpMethod.GET, "/api/v1/plans/**").authenticated()
                 .requestMatchers(HttpMethod.GET, "/api/v1/desks/**").authenticated()
