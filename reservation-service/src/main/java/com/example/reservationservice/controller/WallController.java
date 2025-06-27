@@ -65,9 +65,9 @@ public class WallController {
             @PathVariable Long planId,
             @RequestBody WallDTO wallDTO,
             HttpServletRequest request) {
-        // Check if user is a manager
+        // Check if user is an admin
         String token = extractToken(request);
-        if (!jwtTokenProvider.hasRole(token, "ROLE_MANAGER")) {
+        if (!jwtTokenProvider.hasRole(token, "ROLE_ADMIN")) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
@@ -91,9 +91,9 @@ public class WallController {
             @PathVariable Long id,
             @RequestBody WallDTO wallDTO,
             HttpServletRequest request) {
-        // Check if user is a manager
+        // Check if user is an admin
         String token = extractToken(request);
-        if (!jwtTokenProvider.hasRole(token, "ROLE_MANAGER")) {
+        if (!jwtTokenProvider.hasRole(token, "ROLE_ADMIN")) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
@@ -113,9 +113,9 @@ public class WallController {
     public ResponseEntity<Void> deleteWall(
             @PathVariable Long id,
             HttpServletRequest request) {
-        // Check if user is a manager
+        // Check if user is an admin
         String token = extractToken(request);
-        if (!jwtTokenProvider.hasRole(token, "ROLE_MANAGER")) {
+        if (!jwtTokenProvider.hasRole(token, "ROLE_ADMIN")) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
