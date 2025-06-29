@@ -240,6 +240,25 @@ public class ReservationService {
         }
     }
 
+    /**
+     * Find all reservations in a date range (for analytics)
+     * @param startDate the start date
+     * @param endDate the end date
+     * @param token the JWT token
+     * @return list of reservations
+     */
+    public List<ReservationDTO> getReservationsInDateRange(String startDate, String endDate, String token) {
+        // Only admins can get all reservations in a date range
+        boolean isAdmin = userService.isAdmin(token);
+        if (!isAdmin) {
+            throw new UnauthorizedException("Only administrators can view all reservations in a date range");
+        }
+        
+        return reservationRepository.findReservationsInDateRange(startDate, endDate).stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
     private ReservationDTO convertToDTO(Reservation reservation) {
         ReservationDTO reservationDTO = new ReservationDTO();
         reservationDTO.setId(reservation.getId());

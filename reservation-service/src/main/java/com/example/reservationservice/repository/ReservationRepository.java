@@ -20,6 +20,9 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
     @Query("SELECT r FROM Reservation r WHERE r.desk.plan.id = :planId AND r.bookingDate = :bookingDate")
     List<Reservation> findReservationsByPlanAndDate(Long planId, String bookingDate);
     
+    @Query("SELECT r FROM Reservation r WHERE r.bookingDate >= :startDate AND r.bookingDate <= :endDate")
+    List<Reservation> findReservationsInDateRange(String startDate, String endDate);
+    
     @Query("SELECT r FROM Reservation r WHERE r.userId = :userId AND r.bookingDate >= :startDate AND r.bookingDate <= :endDate")
     List<Reservation> findUserReservationsInDateRange(Long userId, String startDate, String endDate);
     

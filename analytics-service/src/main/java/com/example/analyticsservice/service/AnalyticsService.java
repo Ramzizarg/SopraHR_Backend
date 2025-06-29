@@ -386,17 +386,22 @@ public class AnalyticsService {
 
             // Reservation Count and Occupancy Rate from reservation-service
             metrics.setReservationCount(((Number) reservationAnalytics.getOrDefault("totalReservations", 0)).intValue());
-            // Assuming occupancyRate is a percentage value (e.g., 80.5) and needs to be an int
             metrics.setOccupancyRate(((Number) reservationAnalytics.getOrDefault("occupancyRate", 0.0)).intValue());
 
-            // Team Distribution from user-service
-            List<Map<String, Object>> teamDistData = (List<Map<String, Object>>) userAnalytics.getOrDefault("teamDistribution", new ArrayList<>());
-            List<AnalyticsMetrics.TeamDistribution> teamDist = teamDistData.stream()
-                .map(d -> new AnalyticsMetrics.TeamDistribution((String) d.get("team"), ((Number) d.get("count")).intValue()))
+            // Calculate Team Distribution from users list since user-service analytics endpoint is not providing it
+            Map<String, Long> teamCounts = users.stream()
+                .filter(u -> u.get("team") != null)
+                .collect(Collectors.groupingBy(
+                    u -> (String) u.get("team"),
+                    Collectors.counting()
+                ));
+            
+            List<AnalyticsMetrics.TeamDistribution> teamDist = teamCounts.entrySet().stream()
+                .map(entry -> new AnalyticsMetrics.TeamDistribution(entry.getKey(), entry.getValue().intValue()))
                 .collect(Collectors.toList());
             metrics.setTeamDistribution(teamDist);
 
-            // Weekly Occupancy from reservation-service
+            // Weekly Occupancy from reservation-service - check if it's weekend and fetch next week's data
             List<Map<String, Object>> weeklyOccData = (List<Map<String, Object>>) reservationAnalytics.getOrDefault("weeklyOccupancy", new ArrayList<>());
             List<AnalyticsMetrics.WeeklyOccupancy> weeklyOcc = weeklyOccData.stream()
                 .map(d -> new AnalyticsMetrics.WeeklyOccupancy(
