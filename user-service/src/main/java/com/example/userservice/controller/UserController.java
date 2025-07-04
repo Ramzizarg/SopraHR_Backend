@@ -225,6 +225,28 @@ public class UserController {
         }
     }
 
+    /**
+     * Get team leaders and managers for a specific team
+     * This endpoint is used by the notification service to notify appropriate leaders
+     * 
+     * @param teamName The name of the team (e.g., "DEV", "QA") - case insensitive
+     * @return List of user IDs who are team leaders or managers in the team
+     */
+    @GetMapping("/public/team/{teamName}/leaders-managers")
+    public ResponseEntity<List<Long>> getTeamLeadersAndManagers(@PathVariable String teamName) {
+        String normalizedTeamName = teamName.toUpperCase();
+        logger.info("Retrieving team leaders and managers for team: {} (normalized to {})", teamName, normalizedTeamName);
+        
+        try {
+            List<Long> leadersAndManagers = userService.getTeamLeadersAndManagers(normalizedTeamName);
+            logger.info("Found {} team leaders and managers for team {}", leadersAndManagers.size(), normalizedTeamName);
+            return ResponseEntity.ok(leadersAndManagers);
+        } catch (Exception e) {
+            logger.error("Error retrieving team leaders and managers for team {}: {}", normalizedTeamName, e.getMessage());
+            return ResponseEntity.ok(new ArrayList<>()); // Return empty list on error
+        }
+    }
+
     @PutMapping("/{id}")
     public ResponseEntity<UserResponse> updateUser(@PathVariable Long id,
                                                    @Valid @RequestBody UserRequest userRequest,

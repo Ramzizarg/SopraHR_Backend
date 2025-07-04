@@ -2,6 +2,7 @@ package com.example.teletravailservice.service;
 
 // Planning client import removed - functionality consolidated
 import com.example.teletravailservice.client.UserClient;
+import com.example.teletravailservice.client.NotificationClient;
 import com.example.teletravailservice.dto.TeletravailRequestDTO;
 import com.example.teletravailservice.entity.TeletravailRequest;
 import com.example.teletravailservice.repository.TeletravailRequestRepository;
@@ -40,6 +41,7 @@ public class TeletravailService {
     private final TeletravailRequestRepository repository;
     private final RestTemplate restTemplate;
     private final UserClient userClient;
+    private final NotificationClient notificationClient;
 
     @Value("${api.countrystatecity.key}")
     private String apiKey;
@@ -48,10 +50,12 @@ public class TeletravailService {
     private static final int MAX_DAYS_PER_WEEK = 2;
 
     public TeletravailService(TeletravailRequestRepository repository, RestTemplate restTemplate, 
-            UserClient userClient) {
+            UserClient userClient, NotificationClient notificationClient) {
         this.repository = repository;
         this.restTemplate = restTemplate;
-        this.userClient = userClient;    }
+        this.userClient = userClient;
+        this.notificationClient = notificationClient;
+    }
 
     @CircuitBreaker(name = "userService", fallbackMethod = "userServiceFallback")
     public TeletravailRequest saveRequest(TeletravailRequestDTO dto, String email, String employeeName) {
@@ -191,6 +195,21 @@ public class TeletravailService {
             TeletravailRequest savedRequest = repository.save(request);
             log.info("Saved request to database with ID: {} and team: {}", savedRequest.getId(), savedRequest.getTeam());
             log.info("Teletravail request saved successfully for user {}: ID {}", email, savedRequest.getId());
+            
+            // Send notifications to team leaders and managers
+            try {
+                notificationClient.notifyTeamLeadersAndManagers(
+                    savedRequest.getUserId(),
+                    savedRequest.getEmployeeName(),
+                    savedRequest.getTeam(),
+                    savedRequest.getId(),
+                    savedRequest.getTeletravailDate()
+                );
+                log.info("Notifications sent to team leaders and managers for request ID: {}", savedRequest.getId());
+            } catch (Exception e) {
+                log.error("Failed to send notifications for request ID {}: {}", savedRequest.getId(), e.getMessage());
+                // Don't fail the request if notifications fail
+            }
             
             // Planning service update code removed - functionality consolidated
             log.info("Teletravail request saved with ID: {} - planning service update not needed (functionality consolidated)", savedRequest.getId());
@@ -686,6 +705,21 @@ public class TeletravailService {
         TeletravailRequest updatedRequest = repository.save(request);
         log.info("Updated teletravail request {} status to {}", requestId, status);
         
+        // Send notification to employee about the status update
+        try {
+            notificationClient.notifyEmployee(
+                updatedRequest.getUserId(),
+                updatedRequest.getEmployeeName(),
+                status.name(),
+                updatedRequest.getTeletravailDate(),
+                updatedRequest.getRejectionReason()
+            );
+            log.info("Notification sent to employee {} for request ID: {}", updatedRequest.getUserId(), requestId);
+        } catch (Exception e) {
+            log.error("Failed to send notification to employee for request ID {}: {}", requestId, e.getMessage());
+            // Don't fail the update if notifications fail
+        }
+        
         return updatedRequest;
     }
     
@@ -724,6 +758,21 @@ public class TeletravailService {
         
         TeletravailRequest updatedRequest = repository.save(request);
         log.info("Updated teletravail request {} status to {} as manager", requestId, status);
+        
+        // Send notification to employee about the status update
+        try {
+            notificationClient.notifyEmployee(
+                updatedRequest.getUserId(),
+                updatedRequest.getEmployeeName(),
+                status.name(),
+                updatedRequest.getTeletravailDate(),
+                updatedRequest.getRejectionReason()
+            );
+            log.info("Notification sent to employee {} for request ID: {} (manager update)", updatedRequest.getUserId(), requestId);
+        } catch (Exception e) {
+            log.error("Failed to send notification to employee for request ID {} (manager update): {}", requestId, e.getMessage());
+            // Don't fail the update if notifications fail
+        }
         
         return updatedRequest;
     }

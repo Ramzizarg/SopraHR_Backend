@@ -15,6 +15,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 
 import com.example.analyticsservice.dto.AnalyticsResponse;
 import com.example.analyticsservice.model.AnalyticsMetrics;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import reactor.core.publisher.Mono;
 
@@ -24,6 +25,9 @@ import reactor.core.publisher.Mono;
  */
 @Service
 public class AnalyticsService {
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record TeletravailRequest(String teletravailDate, String status) {}
 
     private final WebClient.Builder webClientBuilder;
     
@@ -316,20 +320,20 @@ public class AnalyticsService {
     public Mono<AnalyticsMetrics> getDashboardMetrics(String token) {
         Mono<Map> userAnalyticsFuture = fetchUserAnalytics(token);
         Mono<Map> reservationAnalyticsFuture = fetchReservationAnalytics(token);
-        Mono<Map> teleworkAnalyticsFuture = fetchTeleworkAnalytics(token);
+        Mono<List<TeletravailRequest>> teleworkRequestsFuture = fetchAllTeletravailRequests(token);
         Mono<Map> planningAnalyticsFuture = fetchPlanningAnalytics(token);
         Mono<List> usersFuture = fetchUsers(token);
 
         return Mono.zip(
             userAnalyticsFuture,
             reservationAnalyticsFuture,
-            teleworkAnalyticsFuture,
+            teleworkRequestsFuture,
             planningAnalyticsFuture,
             usersFuture
         ).map(tuple -> {
             Map<String, Object> userAnalytics = tuple.getT1();
             Map<String, Object> reservationAnalytics = tuple.getT2();
-            Map<String, Object> teleworkAnalytics = tuple.getT3();
+            List<TeletravailRequest> teleworkRequests = tuple.getT3();
             Map<String, Object> planningAnalytics = tuple.getT4();
             List<Map<String, Object>> users = (List<Map<String, Object>>) tuple.getT5();
 
@@ -360,10 +364,15 @@ public class AnalyticsService {
             }
 
             // Office Presence and Remote Work based on telework requests
-            int approvedTeleworkToday = ((Number) teleworkAnalytics.getOrDefault("approvedTodayCount", 0)).intValue();
-            metrics.setRemoteWork(approvedTeleworkToday);
+            LocalDate today = LocalDate.now();
+            long approvedTeleworkToday = teleworkRequests.stream()
+                .filter(r -> r.status().equalsIgnoreCase("APPROVED") && 
+                             LocalDate.parse(r.teletravailDate()).equals(today))
+                .count();
 
-            int inOfficeToday = allEmployees.size() - approvedTeleworkToday;
+            metrics.setRemoteWork((int) approvedTeleworkToday);
+
+            int inOfficeToday = allEmployees.size() - (int) approvedTeleworkToday;
             metrics.setOfficePresence(inOfficeToday);
 
             if (allEmployees.size() > 0) {
@@ -411,12 +420,35 @@ public class AnalyticsService {
             metrics.setWeeklyOccupancy(weeklyOcc);
 
             // Approval Rates from teletravail-service
-            int approved = ((Number) teleworkAnalytics.getOrDefault("approvedRequests", 0)).intValue();
-            int rejected = ((Number) teleworkAnalytics.getOrDefault("rejectedRequests", 0)).intValue();
-            int pending = ((Number) teleworkAnalytics.getOrDefault("pendingRequests", 0)).intValue();
+            int approved = (int) teleworkRequests.stream().filter(r -> r.status().equalsIgnoreCase("APPROVED")).count();
+            int rejected = (int) teleworkRequests.stream().filter(r -> r.status().equalsIgnoreCase("REJECTED")).count();
+            int pending = (int) teleworkRequests.stream().filter(r -> r.status().equalsIgnoreCase("PENDING")).count();
             metrics.setApprovalRates(new AnalyticsMetrics.ApprovalRates(approved, rejected, pending));
 
             return metrics;
         });
+    }
+
+    /**
+     * Fetch all teletravail requests from the teletravail service.
+     * This is used to manually calculate stats to avoid timezone issues
+     * in the teletravail-service's analytics endpoint.
+     * @param token Authentication token
+     * @return List of all teletravail requests
+     */
+    private Mono<List<TeletravailRequest>> fetchAllTeletravailRequests(String token) {
+        String url = teletravailServiceUrl + "/api/teletravail/all";
+        System.out.println("Fetching all teletravail requests from: " + url);
+        return webClientBuilder.build()
+                .get()
+                .uri(url)
+                .header("Authorization", "Bearer " + token)
+                .retrieve()
+                .bodyToMono(new org.springframework.core.ParameterizedTypeReference<List<TeletravailRequest>>() {})
+                .doOnSuccess(data -> System.out.println("Successfully retrieved " + data.size() + " teletravail requests"))
+                .onErrorResume(error -> {
+                    System.err.println("Error fetching all teletravail requests from " + url + ": " + error.getMessage());
+                    return Mono.just(new ArrayList<>());
+                });
     }
 }

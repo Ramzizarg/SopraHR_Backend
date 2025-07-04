@@ -28,6 +28,7 @@ public class ReservationService {
     public ReservationService(ReservationRepository reservationRepository, 
                            DeskRepository deskRepository,
                            UserService userService) {
+        super();
         this.reservationRepository = reservationRepository;
         this.deskRepository = deskRepository;
         this.userService = userService;
@@ -102,14 +103,15 @@ public class ReservationService {
         Desk desk = deskRepository.findById(reservationDTO.getDeskId())
                 .orElseThrow(() -> new ResourceNotFoundException("Desk", "id", reservationDTO.getDeskId()));
         
-        // Check if desk is available for the requested date
+        // Check for conflicting reservations
         List<Reservation> existingReservationsForDesk = reservationRepository.findReservationsByDeskAndDate(desk.getId(), reservationDTO.getBookingDate());
-        if (!existingReservationsForDesk.isEmpty()) {
-            // Log conflicting reservation details
-            Reservation conflicting = existingReservationsForDesk.get(0);
-            System.out.println("Desk unavailable - conflicting reservation: deskId=" + conflicting.getDesk().getId() + 
-                ", date=" + conflicting.getBookingDate() + ", by user=" + conflicting.getUserId());
-            throw new BadRequestException("Desk is already reserved for this date");
+        Reservation.Duration requestedDuration = Reservation.Duration.fromValue(reservationDTO.getDuration());
+        for (Reservation existing : existingReservationsForDesk) {
+            Reservation.Duration existingDuration = existing.getDuration();
+            // If either is FULL, or both are the same half (AM/PM), it's a conflict
+            if (requestedDuration.overlaps(existingDuration)) {
+                throw new BadRequestException("Desk already reserved for this time slot.");
+            }
         }
         
         // Always set employee name from the authenticated user's full name (first + last name)

@@ -18,6 +18,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -134,6 +135,35 @@ public class UserService {
         } catch (IllegalArgumentException e) {
             logger.warn("Invalid team name provided: {}", teamName);
             return List.of(); // Return empty list for invalid team name
+        }
+    }
+
+    /**
+     * Get team leaders and managers for a specific team
+     *
+     * @param teamName String representation of team ("DEV", "QA", etc.)
+     * @return List of user IDs who are team leaders or managers in the team
+     */
+    public List<Long> getTeamLeadersAndManagers(String teamName) {
+        if (teamName == null || teamName.trim().isEmpty()) {
+            logger.warn("Attempt to get team leaders and managers with null or empty team name");
+            return List.of();
+        }
+
+        try {
+            Team team = Team.fromString(teamName.trim());
+            List<User> teamMembers = userRepository.findByTeam(team);
+            
+            List<Long> leadersAndManagers = teamMembers.stream()
+                    .filter(user -> user.getRole() == Role.TEAM_LEADER || user.getRole() == Role.MANAGER)
+                    .map(User::getId)
+                    .collect(Collectors.toList());
+            
+            logger.debug("Retrieved {} team leaders and managers for team {}", leadersAndManagers.size(), teamName);
+            return leadersAndManagers;
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid team name provided: {}", teamName);
+            return List.of();
         }
     }
 

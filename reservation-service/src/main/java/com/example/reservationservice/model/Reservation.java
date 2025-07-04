@@ -27,11 +27,13 @@ public class Reservation {
     private LocalDateTime updatedAt;
 
     public Reservation() {
+        super();
         this.createdAt = LocalDateTime.now();
         this.updatedAt = LocalDateTime.now();
     }
     
     public Reservation(String employeeName, Long userId, String bookingDate, Duration duration) {
+        super();
         this.employeeName = employeeName;
         this.userId = userId;
         this.bookingDate = bookingDate;
@@ -110,8 +112,9 @@ public class Reservation {
     }
     
     public enum Duration {
-        HALF_DAY("4"),
-        FULL_DAY("8");
+        AM("AM"),
+        PM("PM"),
+        FULL("FULL");
         
         private final String value;
         
@@ -125,11 +128,16 @@ public class Reservation {
         
         public static Duration fromValue(String value) {
             for (Duration duration : Duration.values()) {
-                if (duration.getValue().equals(value)) {
+                if (duration.getValue().equalsIgnoreCase(value)) {
                     return duration;
                 }
             }
             throw new IllegalArgumentException("Invalid duration value: " + value);
+        }
+        // Helper: does this duration overlap with another?
+        public boolean overlaps(Duration other) {
+            if (this == FULL || other == FULL) return true;
+            return this == other;
         }
     }
 }

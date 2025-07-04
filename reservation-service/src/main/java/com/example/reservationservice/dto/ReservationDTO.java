@@ -7,12 +7,14 @@ public class ReservationDTO {
     private String employeeName;
     private Long userId;
     private String bookingDate;
+    // duration: 'AM', 'PM', or 'FULL'
     private String duration;
     private Long deskId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     
     public ReservationDTO() {
+        super();
     }
 
     public Long getId() {
