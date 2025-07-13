@@ -712,7 +712,8 @@ public class TeletravailService {
                 updatedRequest.getEmployeeName(),
                 status.name(),
                 updatedRequest.getTeletravailDate(),
-                updatedRequest.getRejectionReason()
+                updatedRequest.getRejectionReason(),
+                requestId
             );
             log.info("Notification sent to employee {} for request ID: {}", updatedRequest.getUserId(), requestId);
         } catch (Exception e) {
@@ -766,7 +767,8 @@ public class TeletravailService {
                 updatedRequest.getEmployeeName(),
                 status.name(),
                 updatedRequest.getTeletravailDate(),
-                updatedRequest.getRejectionReason()
+                updatedRequest.getRejectionReason(),
+                requestId
             );
             log.info("Notification sent to employee {} for request ID: {} (manager update)", updatedRequest.getUserId(), requestId);
         } catch (Exception e) {

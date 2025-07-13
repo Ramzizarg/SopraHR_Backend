@@ -84,7 +84,7 @@ public class NotificationClient {
         }
     }
 
-    public void notifyEmployee(Long employeeId, String employeeName, String status, String date, String reason) {
+    public void notifyEmployee(Long employeeId, String employeeName, String status, String date, String reason, Long requestId) {
         try {
             log.info("Notifying employee: {} about request status: {}", employeeName, status);
             
@@ -105,7 +105,7 @@ public class NotificationClient {
                 type = "TELEWORK_REQUEST_REJECTED";
             }
             
-            createNotification(employeeId, title, message, type, null, "TELEWORK_REQUEST");
+            createNotification(employeeId, title, message, type, requestId, "TELEWORK_REQUEST");
         } catch (Exception e) {
             log.error("Error notifying employee: {}", e.getMessage());
         }
