@@ -36,6 +36,7 @@ public class TeletravailController {
         this.userClient = userClient;
     }
 
+
     @PostMapping
     public ResponseEntity<TeletravailResponseDTO> submitTeletravailRequest(
             @Valid @RequestBody TeletravailRequestDTO requestDTO,
