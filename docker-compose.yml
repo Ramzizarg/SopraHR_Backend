@@ -1,83 +1,57 @@
 version: "3.9"
 
 services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: SopraHR  # Default to user-service DB; others connect via env
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # Optional: Add init scripts for other DBs
+      # - ./init-databases.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      retries: 5
+
   eureka-server:
     build:
       context: ./eureka-server
       dockerfile: Dockerfile
-    image: ramzizarg/eureka-server:latest
+    image: ramzizarg/soprahr-backend-eureka-server:${VERSION}
     ports:
       - "8761:8761"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
     networks:
       - backend
+    depends_on:
+      mysql:
+        condition: service_healthy
 
   user-service:
     build:
       context: ./user-service
       dockerfile: Dockerfile
-    image: ramzizarg/user-service:latest
+    image: ramzizarg/soprahr-backend-user-service:${VERSION}
+    ports:
+      - "9001:9001"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/SopraHR?useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=root
     depends_on:
-      - eureka-server
-    networks:
-      - backend
-
-  reservation-service:
-    build:
-      context: ./reservation-service
-      dockerfile: Dockerfile
-    image: ramzizarg/reservation-service:latest
-    depends_on:
-      - eureka-server
-    networks:
-      - backend
-
-  workstation-service:
-    build:
-      context: ./workstation-service
-      dockerfile: Dockerfile
-    image: ramzizarg/workstation-service:latest
-    depends_on:
-      - eureka-server
-    networks:
-      - backend
-
-  planning-service:
-    build:
-      context: ./planning-service
-      dockerfile: Dockerfile
-    image: ramzizarg/planning-service:latest
-    depends_on:
-      - eureka-server
-    networks:
-      - backend
-
-  notification-service:
-    build:
-      context: ./notification-service
-      dockerfile: Dockerfile
-    image: ramzizarg/notification-service:latest
-    depends_on:
-      - eureka-server
-    networks:
-      - backend
-
-  contact-service:
-    build:
-      context: ./contact-service
-      dockerfile: Dockerfile
-    image: ramzizarg/contact-service:latest
-    depends_on:
-      - eureka-server
-    networks:
-      - backend
-
-  teletravail-service:
-    build:
-      context: ./teletravail-service
-      dockerfile: Dockerfile
-    image: ramzizarg/teletravail-service:latest
-    depends_on:
-      - eureka-server
+      mysql:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
     networks:
       - backend
 
@@ -85,18 +59,177 @@ services:
     build:
       context: ./analytics-service
       dockerfile: Dockerfile
-    image: ramzizarg/analytics-service:latest
+    image: ramzizarg/soprahr-backend-analytics-service:${VERSION}
+    ports:
+      - "5001:5001"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/analytics_db?useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=root
     depends_on:
-      - eureka-server
+      mysql:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
     networks:
       - backend
 
-  sonarqube:
-    image: sonarqube:latest
+  contact-service:
+    build:
+      context: ./contact-service
+      dockerfile: Dockerfile
+    image: ramzizarg/soprahr-backend-contact-service:${VERSION}
     ports:
-      - "9000:9000"
+      - "4001:4001"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/contactdb?useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=root
+    depends_on:
+      mysql:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
     networks:
       - backend
+
+  notification-service:
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    image: ramzizarg/soprahr-backend-notification-service:${VERSION}
+    ports:
+      - "3001:3001"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/notification_db?useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=root
+    depends_on:
+      mysql:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+    networks:
+      - backend
+
+  planning-service:
+    build:
+      context: ./planning-service
+      dockerfile: Dockerfile
+    image: ramzizarg/soprahr-backend-planning-service:${VERSION}
+    ports:
+      - "8001:8001"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/planningdb?useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=root
+    depends_on:
+      mysql:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+    networks:
+      - backend
+
+  reservation-service:
+    build:
+      context: ./reservation-service
+      dockerfile: Dockerfile
+    image: ramzizarg/soprahr-backend-reservation-service:${VERSION}
+    ports:
+      - "6001:6001"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/reservationdb?useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=root
+    depends_on:
+      mysql:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+    networks:
+      - backend
+
+  teletravail-service:
+    build:
+      context: ./teletravail-service
+      dockerfile: Dockerfile
+    image: ramzizarg/soprahr-backend-teletravail-service:${VERSION}
+    ports:
+      - "7001:7001"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/teletravaildb?useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=root
+    depends_on:
+      mysql:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+    networks:
+      - backend
+
+  workstation-service:
+    build:
+      context: ./workstation-service
+      dockerfile: Dockerfile
+    image: ramzizarg/soprahr-backend-workstation-service:${VERSION}
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/workstationdb?useSSL=false&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=root
+    depends_on:
+      mysql:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+    networks:
+      - backend
+
+  ai-decision-system:
+    build:
+      context: ./ai-decision-system
+      dockerfile: Dockerfile
+    image: ramzizarg/soprahr-backend-ai-decision-system:${VERSION}
+    ports:
+      - "8000:8000"  # AI API (FastAPI)
+      - "8050:8050"  # AI Dashboard (Dash)
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASSWORD=root
+      # Add other DBs as env vars if needed for AI connections
+      - ANALYTICS_DB=analytics_db
+      - CONTACT_DB=contactdb
+      # ... (repeat for all DBs)
+    depends_on:
+      mysql:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+    networks:
+      - backend
+
+volumes:
+  mysql-data:
 
 networks:
   backend:
