@@ -1,11 +1,302 @@
 version: '3.8'
 
 services:
-  backend:
-    build: .
-    container_name: backend-service
-    image: ramzizarg/workstation:latest
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: workstation-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: 
+      MYSQL_USER: ramzi
+      MYSQL_PASSWORD: 
+      MYSQL_DATABASE: workstation
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./ai-decision-system/create_databases.sql:/docker-entrypoint-initdb.d/create_databases.sql
+    networks:
+      - workstation-network
+
+  # Eureka Server (Service Discovery)
+  eureka-server:
+    build:
+      context: ./eureka-server
+      dockerfile: Dockerfile
+    container_name: eureka-server
+    restart: unless-stopped
+    ports:
+      - "8761:8761"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    networks:
+      - workstation-network
+    depends_on:
+      - mysql
+
+  # User Service
+  user-service:
+    build:
+      context: ./user-service
+      dockerfile: Dockerfile
+    container_name: user-service
+    restart: unless-stopped
+    ports:
+      - "9001:9001"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/SopraHR?useUnicode=true&useJDBCCompliantTimezoneShift=true&createDatabaseIfNotExist=true&useLegacyDatetimeCode=false&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: 
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka
+      JWT_SECRET: MIAiS2uJRefqPAIuYOvGHx7VY4ZL42Hrha/AM0NRjL4=
+      JWT_ACCESS_TOKEN_EXPIRATION: 3600000
+      JWT_REFRESH_TOKEN_EXPIRATION: 604800000
+      SPRING_MAIL_HOST: smtp.gmail.com
+      SPRING_MAIL_PORT: 465
+      SPRING_MAIL_USERNAME: ramziars10@gmail.com
+      SPRING_MAIL_PASSWORD: fxckifvqbjlrsnru
+      FILE_UPLOAD_DIR: /app/uploads/profile-photos
+      APP_BASE_URL: http://localhost:9001
+      APP_RESET_PASSWORD_URL: http://localhost:4200/reset-password
+    volumes:
+      - user_uploads:/app/uploads/profile-photos
+    networks:
+      - workstation-network
+    depends_on:
+      - mysql
+      - eureka-server
+
+  # Analytics Service
+  analytics-service:
+    build:
+      context: ./analytics-service
+      dockerfile: Dockerfile
+    container_name: analytics-service
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    environment:
+      SPRING_APPLICATION_NAME: analytics-service
+      SERVER_PORT: 5001
+      SERVICES_USER_SERVICE_URL: http://user-service:9001
+      SERVICES_TELETRAVAIL_SERVICE_URL: http://teletravail-service:7001
+      SERVICES_RESERVATION_SERVICE_URL: http://reservation-service:6001
+      SERVICES_PLANNING_SERVICE_URL: http://planning-service:8001
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka
+      SPRING_WEB_CORS_ALLOWED_ORIGINS: http://localhost:4200
+    networks:
+      - workstation-network
+    depends_on:
+      - eureka-server
+      - user-service
+
+  # Contact Service
+  contact-service:
+    build:
+      context: ./contact-service
+      dockerfile: Dockerfile
+    container_name: contact-service
+    restart: unless-stopped
+    ports:
+      - "4001:4001"
+    environment:
+      SPRING_APPLICATION_NAME: contact-service
+      SERVER_PORT: 4001
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/contactdb?useUnicode=true&useJDBCCompliantTimezoneShift=true&createDatabaseIfNotExist=true&useLegacyDatetimeCode=false&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: 
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka
+      JWT_SECRET: MIAiS2uJRefqPAIuYOvGHx7VY4ZL42Hrha/AM0NRjL4=
+      USER_SERVICE_URL: http://user-service:9001/api/users
+      USER_SERVICE_AUTH_URL: http://user-service:9001/auth
+    networks:
+      - workstation-network
+    depends_on:
+      - mysql
+      - eureka-server
+      - user-service
+
+  # Notification Service
+  notification-service:
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    container_name: notification-service
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      SERVER_PORT: 3001
+      SPRING_APPLICATION_NAME: notification-service
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/notification_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: 
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka
+    networks:
+      - workstation-network
+    depends_on:
+      - mysql
+      - eureka-server
+
+  # Planning Service
+  planning-service:
+    build:
+      context: ./planning-service
+      dockerfile: Dockerfile
+    container_name: planning-service
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      SPRING_APPLICATION_NAME: planning-service
+      SERVER_PORT: 8001
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka
+      SERVICES_USER_SERVICE_URL: http://user-service:9001
+      SERVICES_TELETRAVAIL_SERVICE_URL: http://teletravail-service:7001
+    networks:
+      - workstation-network
+    depends_on:
+      - eureka-server
+      - user-service
+
+  # Reservation Service
+  reservation-service:
+    build:
+      context: ./reservation-service
+      dockerfile: Dockerfile
+    container_name: reservation-service
+    restart: unless-stopped
+    ports:
+      - "6001:6001"
+    environment:
+      SPRING_APPLICATION_NAME: reservation-service
+      SERVER_PORT: 6001
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/reservationdb?useUnicode=true&createDatabaseIfNotExist=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: 
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka
+      JWT_SECRET: MIAiS2uJRefqPAIuYOvGHx7VY4ZL42Hrha/AM0NRjL4=
+      USER_SERVICE_URL: http://user-service:9001/api/users
+      USER_SERVICE_AUTH_URL: http://user-service:9001/auth
+    networks:
+      - workstation-network
+    depends_on:
+      - mysql
+      - eureka-server
+      - user-service
+
+  # Teletravail Service
+  teletravail-service:
+    build:
+      context: ./teletravail-service
+      dockerfile: Dockerfile
+    container_name: teletravail-service
+    restart: unless-stopped
+    ports:
+      - "7001:7001"
+    environment:
+      SPRING_APPLICATION_NAME: teletravail-service
+      SERVER_PORT: 7001
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/teletravaildb?useUnicode=true&useJDBCCompliantTimezoneShift=true&createDatabaseIfNotExist=true&useLegacyDatetimeCode=false&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: 
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka
+      JWT_SECRET: MIAiS2uJRefqPAIuYOvGHx7VY4ZL42Hrha/AM0NRjL4=
+      USER_SERVICE_URL: http://user-service:9001/api/users
+      USER_SERVICE_AUTH_URL: http://user-service:9001/auth
+      NOTIFICATION_SERVICE_URL: http://notification-service:3001
+      API_COUNTRYSTATECITY_KEY: dzhFcFRrU1U5TmtIV2JsU3FXOUVJZmJSdHhVOFNxTHBDZXFqdjRRVw==
+    networks:
+      - workstation-network
+    depends_on:
+      - mysql
+      - eureka-server
+      - user-service
+      - notification-service
+
+  # Workstation Service
+  workstation-service:
+    build:
+      context: ./workstation-service
+      dockerfile: Dockerfile
+    container_name: workstation-service
+    restart: unless-stopped
     ports:
       - "8080:8080"
     environment:
-      SPRING_PROFILES_ACTIVE: prod
+      SPRING_APPLICATION_NAME: workstation-service
+      SERVER_PORT: 8080
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka
+    networks:
+      - workstation-network
+    depends_on:
+      - eureka-server
+
+  # AI Decision System (Python FastAPI)
+  ai-decision-system:
+    build:
+      context: ./ai-decision-system
+      dockerfile: Dockerfile
+    container_name: ai-decision-system
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: 
+      ANALYTICS_DB: analytics_db
+      CONTACT_DB: contactdb
+      NOTIFICATION_DB: notification_db
+      PLANNING_DB: planningdb
+      RESERVATION_DB: reservationdb
+      TELETRAVAIL_DB: teletravaildb
+      USER_DB: SopraHR
+    networks:
+      - workstation-network
+    depends_on:
+      - mysql
+      - analytics-service
+      - contact-service
+      - notification-service
+      - planning-service
+      - reservation-service
+      - teletravail-service
+      - user-service
+
+  # AI Dashboard (Python Dash)
+  ai-dashboard:
+    build:
+      context: ./ai-decision-system
+      dockerfile: Dockerfile.dashboard
+    container_name: ai-dashboard
+    restart: unless-stopped
+    ports:
+      - "8050:8050"
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: 
+      ANALYTICS_DB: analytics_db
+      CONTACT_DB: contactdb
+      NOTIFICATION_DB: notification_db
+      PLANNING_DB: planningdb
+      RESERVATION_DB: reservationdb
+      TELETRAVAIL_DB: teletravaildb
+      USER_DB: SopraHR
+    networks:
+      - workstation-network
+    depends_on:
+      - mysql
+      - ai-decision-system
+
+volumes:
+  mysql_data:
+  user_uploads:
+
+networks:
+  workstation-network:
+    driver: bridge
