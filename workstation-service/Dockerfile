@@ -1,9 +1,13 @@
-FROM openjdk:17-jdk-alpine
-
+# Stage 1: Build
+FROM maven:3.8.6-openjdk-17-slim AS build
 WORKDIR /app
+COPY pom.xml .
+COPY src ./src
+RUN mvn clean package -DskipTests
 
-COPY target/workstation-service-0.0.1-SNAPSHOT.jar /app/workstation-service.jar
-
+# Stage 2: Runtime
+FROM openjdk:17-jdk-slim
+WORKDIR /app
+COPY --from=build /app/target/*.jar app.jar
 EXPOSE 8080
-
-CMD ["java", "-jar", "/app/workstation-service.jar"]
+ENTRYPOINT ["java", "-Dspring.profiles.active=prod", "-jar", "app.jar"]
