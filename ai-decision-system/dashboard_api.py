@@ -8,6 +8,8 @@ import threading
 from datetime import datetime, timedelta
 import json
 import logging
+from pydantic import BaseModel
+from typing import List
 
 from data_collector import DataCollector
 from ai_analyzer import AIAnalyzer
@@ -308,12 +310,95 @@ async def health_check():
         }
 
 
+
     except Exception as e:
         return {
             "status": "unhealthy",
             "error": str(e),
             "timestamp": datetime.now().isoformat()
         }
+
+# --- Smart Suggestions Endpoint ---
+class PlanningEntry(BaseModel):
+    date: str
+    status: str
+
+class SuggestionRequest(BaseModel):
+    user_id: int
+    planning: List[PlanningEntry]
+
+class SuggestionResponse(BaseModel):
+    suggestions: List[str]
+
+@app.post("/api/ai/suggestions", response_model=SuggestionResponse)
+async def get_smart_suggestions(req: SuggestionRequest):
+    import datetime, httpx
+    planning = req.planning
+    today = datetime.date.today()
+    suggestions = []
+
+    # Fetch real analytics, public holidays, and occupancy predictions
+    team_avg = 1.5
+    public_holidays = []
+    busy_days = []
+    async with httpx.AsyncClient() as client:
+        # Real analytics (team average telework)
+        try:
+            resp = await client.get("http://localhost:8000/api/analysis/telework")
+            if resp.status_code == 200:
+                telework_analysis = resp.json().get("telework_analysis", {})
+                team_avg = telework_analysis.get("team_average", 1.5)
+        except Exception:
+            pass
+        # Public holidays (France, 2024)
+        try:
+            resp = await client.get("https://date.nager.at/api/v3/PublicHolidays/2024/FR")
+            if resp.status_code == 200:
+                public_holidays = [h['date'] for h in resp.json()]
+        except Exception:
+            pass
+        # Occupancy predictions (next 14 days, >85%)
+        try:
+            resp = await client.get("http://localhost:8000/api/predictions/occupancy?days=14")
+            if resp.status_code == 200:
+                predictions = resp.json().get("predictions", [])
+                busy_days = [p['date'] for p in predictions if p.get('occupancy', 0) > 85]
+        except Exception:
+            pass
+
+    # Check for Friday reservation
+    has_friday = any(
+        datetime.datetime.strptime(e.date, '%Y-%m-%d').weekday() == 4
+        for e in planning if e.status == 'OFFICE'
+    )
+    if not has_friday:
+        suggestions.append("Vous n'avez pas réservé de bureau pour vendredi. Réservez maintenant !")
+
+    # Telework days this week
+    week_telework = [
+        e for e in planning
+        if e.status == 'TELETRAVAIL' and
+        datetime.datetime.strptime(e.date, '%Y-%m-%d').isocalendar()[1] == today.isocalendar()[1]
+    ]
+    if len(week_telework) > 2:
+        suggestions.append(f"Vous avez déjà {len(week_telework)} jours de télétravail cette semaine (max autorisé : 3).")
+
+    # Compare to team average
+    if len(week_telework) > team_avg + 1:
+        suggestions.append("Votre taux de télétravail est supérieur à la moyenne de votre équipe.")
+
+    # Public holiday check
+    for ph in public_holidays:
+        if ph in [e.date for e in planning]:
+            suggestions.append("Attention : un jour férié est inclus dans votre planning.")
+
+    # Occupancy prediction
+    for day in busy_days:
+        if day in [e.date for e in planning if e.status == 'OFFICE']:
+            suggestions.append(f"Le {day} risque d'être très occupé au bureau, pensez à réserver tôt ou choisir un autre jour.")
+
+    suggestions.append("Astuce : Alternez télétravail et bureau pour une meilleure collaboration d'équipe.")
+    return {"suggestions": suggestions}
 
 if __name__ == "__main__":
     uvicorn.run(
