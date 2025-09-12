@@ -5,18 +5,41 @@ services:
     image: mysql:8.0
     environment:
       MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: SopraHR  # Default to user-service DB; others connect via env
+      MYSQL_DATABASE: SopraHR  # Default for user-service; others via init.sql
+      MYSQL_USER: sonar
+      MYSQL_PASSWORD: sonar
     ports:
       - "3306:3306"
     volumes:
       - mysql-data:/var/lib/mysql
-      # Optional: Add init scripts for other DBs
-      # - ./init-databases.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./init-databases.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - backend
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
+      retries: 5
+
+  sonarqube:
+    image: sonarqube:10.7-community
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      SONAR_JDBC_URL: jdbc:mysql://mysql:3306/sonar?useUnicode=true&characterEncoding=utf8&rewriteBatchedStatements=true&useConfigs=maxPerformance&useSSL=false
+      SONAR_JDBC_USERNAME: sonar
+      SONAR_JDBC_PASSWORD: sonar
+    ports:
+      - "9000:9000"
+    volumes:
+      - sonarqube-data:/opt/sonarqube/data
+      - sonarqube-logs:/opt/sonarqube/logs
+      - sonarqube-extensions:/opt/sonarqube/extensions
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/api/system/status"]
+      interval: 30s
       retries: 5
 
   eureka-server:
@@ -208,18 +231,22 @@ services:
       dockerfile: Dockerfile
     image: ramzizarg/soprahr-backend-ai-decision-system:${VERSION}
     ports:
-      - "8000:8000"  # AI API (FastAPI)
-      - "8050:8050"  # AI Dashboard (Dash)
+      - "8000:8000"  # FastAPI API
+      - "8050:8050"  # Dash Dashboard
     environment:
       - PYTHONUNBUFFERED=1
       - DB_HOST=mysql
       - DB_PORT=3306
       - DB_USER=root
       - DB_PASSWORD=root
-      # Add other DBs as env vars if needed for AI connections
       - ANALYTICS_DB=analytics_db
       - CONTACT_DB=contactdb
-      # ... (repeat for all DBs)
+      - NOTIFICATION_DB=notification_db
+      - PLANNING_DB=planningdb
+      - RESERVATION_DB=reservationdb
+      - TELETRAVAIL_DB=teletravaildb
+      - WORKSTATION_DB=workstationdb
+      - USER_DB=SopraHR
     depends_on:
       mysql:
         condition: service_healthy
@@ -230,6 +257,9 @@ services:
 
 volumes:
   mysql-data:
+  sonarqube-data:
+  sonarqube-logs:
+  sonarqube-extensions:
 
 networks:
   backend:
