@@ -2,8 +2,6 @@ FROM openjdk:17-jdk-slim
 
 WORKDIR /app
 
-COPY target/workstation.jar app.jar
+COPY target/workstation.jar app.jar /app/workstation.jar
 
-EXPOSE 8080
-
-ENTRYPOINT ["java", "-jar", "app.jar"]
+CMD ["java", "-jar", "/app/workstation.jar"]
