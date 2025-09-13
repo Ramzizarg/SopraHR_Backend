@@ -1,25 +1,43 @@
 server:
-  port: 9001
+  port: ${SERVER_PORT:9001}
 
 spring:
   application:
     name: user-service
   datasource:
-    url: jdbc:mysql://localhost:3306/SopraHR?useSSL=false&serverTimezone=UTC
-    username: root
-    password:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/SopraHR?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true}
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
   jpa:
     hibernate:
       ddl-auto: update
     show-sql: true
     database-platform: org.hibernate.dialect.MySQLDialect
+  mail:
+    host: ${SPRING_MAIL_HOST:localhost}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME:}
+    password: ${SPRING_MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${SPRING_MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${SPRING_MAIL_SMTP_STARTTLS_ENABLE:true}
+  security:
+    oauth2:
+          resourceserver:
+            jwt:
+              issuer-uri: ${JWT_ISSUER_URI:http://localhost:9001/auth}
+              jwk-set-uri: ${JWT_JWK_SET_URI:http://localhost:9001/.well-known/jwks.json}
 
 eureka:
   client:
     serviceUrl:
-      defaultZone: http://localhost:8761/eureka
+      defaultZone: ${EUREKA_CLIENT_SERVICEURL_DEFAULTZONE:http://localhost:8761/eureka}
+    enabled: true
 
 jwt:
-  secret: MIAiS2uJRefqPAIuYOvGHx7VY4ZL42Hrha/AM0NRjL4=
-  access-token-expiration: 3600000 # 1 hour
-  refresh-token-expiration: 604800000 # 7 days
+  secret: ${JWT_SECRET:MIAiS2uJRefqPAIuYOvGHx7VY4ZL42Hrha/AM0NRjL4=}
+  access-token-expiration: ${JWT_ACCESS_TOKEN_EXPIRATION:3600000}
+  refresh-token-expiration: ${JWT_REFRESH_TOKEN_EXPIRATION:604800000}
