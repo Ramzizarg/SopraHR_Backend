@@ -5,7 +5,7 @@ services:
     image: mysql:8.0
     environment:
       MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: SopraHR  # Default for user-service; others via init.sql
+      MYSQL_DATABASE: SopraHR
       MYSQL_USER: sonar
       MYSQL_PASSWORD: sonar
     ports:
@@ -151,12 +151,7 @@ services:
     environment:
       - SPRING_PROFILES_ACTIVE=prod
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/planningdb?useSSL=false&allowPublicKeyRetrieval=true
-      - SPRING_DATASOURCE_USERNAME=root
-      - SPRING_DATASOURCE_PASSWORD=root
     depends_on:
-      mysql:
-        condition: service_healthy
       eureka-server:
         condition: service_started
     networks:
@@ -231,8 +226,8 @@ services:
       dockerfile: Dockerfile
     image: ramzizarg/soprahr-backend-ai-decision-system:${VERSION}
     ports:
-      - "8000:8000"  # FastAPI API
-      - "8050:8050"  # Dash Dashboard
+      - "8000:8000"
+      - "8050:8050"
     environment:
       - PYTHONUNBUFFERED=1
       - DB_HOST=mysql
@@ -242,7 +237,6 @@ services:
       - ANALYTICS_DB=analytics_db
       - CONTACT_DB=contactdb
       - NOTIFICATION_DB=notification_db
-      - PLANNING_DB=planningdb
       - RESERVATION_DB=reservationdb
       - TELETRAVAIL_DB=teletravaildb
       - WORKSTATION_DB=workstationdb
