@@ -1,0 +1,37 @@
+  spring:
+    profiles:
+      active: test
+    datasource:
+      url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;MODE=MYSQL
+      driver-class-name: org.h2.Driver
+      username: sa
+      password:
+    jpa:
+      database-platform: org.hibernate.dialect.H2Dialect
+      hibernate:
+        ddl-auto: create-drop
+      show-sql: true
+    mail:
+      host: localhost
+      port: 2525
+      username: test
+      password: test
+      properties:
+        mail:
+          smtp:
+            auth: false
+            starttls:
+              enable: false
+    security:
+      oauth2:
+        resourceserver:
+          jwt:
+            issuer-uri: http://localhost:9001/auth
+            jwk-set-uri: http://localhost:9001/.well-known/jwks.json
+  eureka:
+    client:
+      enabled: false
+  jwt:
+    secret: MIAiS2uJRefqPAIuYOvGHx7VY4ZL42Hrha/AM0NRjL4=
+    access-token-expiration: 3600000
+    refresh-token-expiration: 604800000
