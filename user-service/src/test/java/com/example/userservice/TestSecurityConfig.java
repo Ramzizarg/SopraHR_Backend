@@ -16,7 +16,7 @@ public class TestSecurityConfig {
         http
                 .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwkSetUri("http://localhost:9001/.well-known/jwks.json")))
-                .csrf().disable();
+                .csrf(csrf -> csrf.disable());
         return http.build();
     }
 }
