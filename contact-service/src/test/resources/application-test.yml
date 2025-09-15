@@ -20,16 +20,6 @@
             auth: false
             starttls:
               enable: false
-    security:
-      oauth2:
-        resourceserver:
-          jwt:
-            issuer-uri: http://localhost:9001/auth
-            jwk-set-uri: http://localhost:9001/.well-known/jwks.json
   eureka:
     client:
       enabled: false
-  jwt:
-    secret: MIAiS2uJRefqPAIuYOvGHx7VY4ZL42Hrha/AM0NRjL4=
-    access-token-expiration: 3600000
-    refresh-token-expiration: 604800000
