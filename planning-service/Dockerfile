@@ -1,13 +1,6 @@
-# Stage 1: Build
-FROM maven:3.9.8-eclipse-temurin-17 AS build
+# Single-stage Dockerfile using pre-built JAR from Jenkins pipeline
+FROM openjdk:17-jre-slim
 WORKDIR /app
-COPY pom.xml .
-COPY src ./src
-RUN mvn clean package -DskipTests
-
-# Stage 2: Runtime
-FROM openjdk:17-jdk-slim
-WORKDIR /app
-COPY --from=build /app/target/*.jar app.jar
+COPY target/*.jar app.jar
 EXPOSE 8001
 ENTRYPOINT ["java", "-Dspring.profiles.active=prod", "-jar", "app.jar"]
