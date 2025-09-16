@@ -1,5 +1,5 @@
 # Stage 1: Build (Maven) - Optional if building outside; assumes JAR is pre-built in pipeline
-FROM maven:3.9.11-openjdk-17 AS build
+FROM maven:3.9.8-eclipse-temurin-17 AS build
 WORKDIR /app
 COPY pom.xml .
 COPY src ./src
